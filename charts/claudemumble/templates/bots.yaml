@@ -1,0 +1,210 @@
+{{- $root := . -}}
+{{- $fullname := include "claudemumble.fullname" . -}}
+{{- $bots := splitList "," (include "claudemumble.bots" .) | compact -}}
+{{- if empty $bots }}
+{{- fail "Mindestens einer der Bots muss aktiv sein (mumble.enabled oder discord.enabled)." }}
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.webPassword.existingSecret) }}
+{{- fail "Ein öffentliches Webinterface braucht ein Passwort: webPassword.existingSecret setzen (siehe DEPLOYMENT.md)." }}
+{{- end }}
+{{- range $bot := $bots }}
+{{- $cfg := index $root.Values $bot }}
+{{- $name := printf "%s-%s" $fullname $bot }}
+{{- $other := ternary "discord" "mumble" (eq $bot "mumble") }}
+{{- $secret := required (printf "%s.existingSecret fehlt: ein Secret mit den Zugangsdaten für %s (siehe DEPLOYMENT.md)" $bot $bot) $cfg.existingSecret }}
+{{- $settings := merge (dict) $cfg.settings $root.Values.settings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "claudemumble.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $bot }}
+data:
+  {{- range $key, $value := $settings }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}
+  PLATFORM: {{ $bot | quote }}
+  SOUNDS_DIR: "/sounds"
+  DATA_DIR: "/data"
+  COLLECTIONS_DIRS: "/collections"
+  WEB_HOST: "0.0.0.0"
+  WEB_PORT: "8080"
+  {{- if has $other $bots }}
+  {{- with include "claudemumble.url" (dict "root" $root "bot" $other) }}
+  PEER_WEB_URL: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if and (eq $bot "mumble") $cfg.certificate.existingSecret }}
+  MUMBLE_CERT_FILE: "/certs/cert.pem"
+  MUMBLE_KEY_FILE: "/certs/key.pem"
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- include "claudemumble.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $bot }}
+  annotations:
+    # Warteschlange, Join-Sounds und Zertifikat überleben ein "helm uninstall".
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with $root.Values.persistence.data.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $root.Values.persistence.data.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "claudemumble.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $bot }}
+spec:
+  type: {{ $root.Values.service.type }}
+  selector:
+    {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $root.Values.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "claudemumble.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $bot }}
+spec:
+  # Genau ein Bot pro Plattform: zwei Instanzen mit demselben Namen/Token würden sich gegenseitig rauswerfen.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 8 }}
+      annotations:
+        # Neustart, wenn sich die Einstellungen ändern.
+        checksum/settings: {{ $settings | toJson | sha256sum | trunc 16 }}
+    spec:
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: {{ $bot }}
+          image: {{ include "claudemumble.image" $root }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+            - secretRef:
+                name: {{ $secret }}
+          {{- with $root.Values.webPassword.existingSecret }}
+          env:
+            - name: WEB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $root.Values.webPassword.key }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: sounds
+              mountPath: /sounds
+            {{- if $root.Values.persistence.collections.enabled }}
+            - name: collections
+              mountPath: /collections
+              readOnly: true
+            {{- end }}
+            {{- if and (eq $bot "mumble") $cfg.certificate.existingSecret }}
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+        - name: sounds
+          persistentVolumeClaim:
+            claimName: {{ include "claudemumble.soundsClaim" $root }}
+        {{- if $root.Values.persistence.collections.enabled }}
+        - name: collections
+          persistentVolumeClaim:
+            claimName: {{ include "claudemumble.collectionsClaim" $root }}
+        {{- end }}
+        {{- if and (eq $bot "mumble") $cfg.certificate.existingSecret }}
+        - name: certs
+          secret:
+            secretName: {{ $cfg.certificate.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: cert.pem
+                path: cert.pem
+              - key: key.pem
+                path: key.pem
+        {{- end }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $root.Values.affinity }}
+      affinity:
+        {{- toYaml $root.Values.affinity | nindent 8 }}
+      {{- else if and (eq $bot "discord") (has "mumble" $bots) (eq $root.Values.persistence.sounds.accessMode "ReadWriteOnce") }}
+      # The shared sounds volume can only be mounted on one node: run next to the Mumble bot.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" "mumble") | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+{{- end }}

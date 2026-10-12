@@ -1,0 +1,11 @@
+# Only tool settings; the app is not installed as a package.
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["app/mumble/Mumble_pb2.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+# Long lines are fine where breaking them would hurt readability (test tables, messages).
+ignore = ["E501"]

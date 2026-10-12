@@ -1,0 +1,49 @@
+# Vorlage für das eigene Deployment: kopieren nach deploy/values.yaml und anpassen.
+# Keine Zugangsdaten hier eintragen, nur die Namen der Secrets (siehe DEPLOYMENT.md).
+
+image:
+  repository: ghcr.io/thezasa/dumbleboard
+
+# Nur nötig, solange das Paket auf GitHub privat ist.
+imagePullSecrets:
+  - name: ghcr-pull
+
+settings:
+  COMMAND_PREFIXES: "/,!"
+  ADMINS: ""
+
+mumble:
+  existingSecret: mumble-zugang
+  certificate:
+    # Das Zertifikat des registrierten Bots von deinem PC (data/cert.pem, data/key.pem).
+    existingSecret: mumble-cert
+  settings:
+    MUMBLE_CHANNEL: ""
+    MUMBLE_FOLLOW_USER: ""
+  ingress:
+    host: soundboard.example.org
+
+discord:
+  enabled: true
+  existingSecret: discord-zugang
+  settings:
+    DISCORD_CHANNEL: ""
+  ingress:
+    host: discord.soundboard.example.org
+
+webPassword:
+  existingSecret: web-passwort
+
+ingress:
+  enabled: true
+  # k3s: traefik
+  className: traefik
+  annotations:
+    # Falls im Cluster cert-manager läuft:
+    cert-manager.io/cluster-issuer: letsencrypt
+
+persistence:
+  sounds:
+    size: 2Gi
+  collections:
+    size: 30Gi

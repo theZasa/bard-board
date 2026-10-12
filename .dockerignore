@@ -1,0 +1,12 @@
+.env
+.git
+data
+data-discord
+sounds
+collections
+tools
+*.tar
+**/__pycache__
+*.md
+*.bat
+*.ps1

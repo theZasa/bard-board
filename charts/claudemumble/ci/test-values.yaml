@@ -1,0 +1,26 @@
+# Werte für "helm lint" und "helm template" in der CI: alles eingeschaltet, Secrets nur als Namen.
+image:
+  repository: ghcr.io/example/claudemumble
+  tag: ci
+mumble:
+  existingSecret: mumble-zugang
+  certificate:
+    existingSecret: mumble-cert
+discord:
+  enabled: true
+  existingSecret: discord-zugang
+webPassword:
+  existingSecret: web-passwort
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+persistence:
+  collections:
+    sync:
+      enabled: true
+      source: "s3:soundboard/collections"
+      configSecret: rclone-config
+uploader:
+  enabled: true

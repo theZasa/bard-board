@@ -1,0 +1,17 @@
+.env
+data/
+data-discord/
+sounds/
+collections/
+__pycache__/
+*.pyc
+*.tar
+docker-compose.override.yml
+# Nie ins Repo: Zertifikate und Schlüssel (Identität des Mumble-Bots)
+*.pem
+*.key
+# Lokale Ablagen und Werkzeug-Caches
+Claude outputs/
+.ci/
+.ruff_cache/
+*.tgz
