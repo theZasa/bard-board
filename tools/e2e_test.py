@@ -339,6 +339,12 @@ async def run(args: argparse.Namespace) -> int:
         MALLOC_MMAP_THRESHOLD_="0",
         DEFAULT_VOLUME="100",
         LIVE_IDLE_MINUTES="0.1",
+        # No internet for the bot, even where the machine has it (CI runners): every test medium is
+        # served over plain HTTP from localhost, and the YouTube search must fail predictably.
+        HTTPS_PROXY="http://127.0.0.1:9",
+        https_proxy="http://127.0.0.1:9",
+        NO_PROXY="127.0.0.1,localhost",
+        no_proxy="127.0.0.1,localhost",
     )
     log_file = open(data_dir / "bot.log", "w")
     bot = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT)
