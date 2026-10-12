@@ -1,4 +1,4 @@
-# claudemumble - Soundboard für Mumble und Discord mit Webinterface
+# bard-board - Soundboard für Mumble und Discord mit Webinterface
 
 Ein Bot sitzt in deinem Mumble-Kanal und spielt Sounds ab, ein zweiter auf Wunsch genauso in Discord.
 Außerdem spielt er Musik von YouTube (Links, Playlists, Suche) aus einer Warteschlange ab, wie ein Radio.
@@ -156,7 +156,7 @@ Läuft es auf einem Server, schützt die Einstellung `WEB_PASSWORD` es mit einem
 
 ## Betrieb auf einem Server (Kubernetes)
 
-Neben dem lokalen Setup gibt es ein Helm-Chart (`charts/claudemumble`) und eine CI mit GitHub Actions, die Image und Chart baut, testet und optional ausrollt.
+Neben dem lokalen Setup gibt es ein Helm-Chart (`charts/bard-board`) und eine CI mit GitHub Actions, die Image und Chart baut, testet und optional ausrollt.
 Alles dazu, inklusive Umzug von Sounds, Sammlungen und Join-Sounds, steht in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Musik (YouTube)

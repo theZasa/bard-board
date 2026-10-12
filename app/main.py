@@ -23,7 +23,7 @@ def main() -> int:
     # Print a Python traceback if native code (libopus via ctypes) ever crashes the process.
     faulthandler.enable()
     if hasattr(signal, "SIGUSR1"):
-        # `docker kill -s USR1 claudemumble` prints the stack of every thread into the log (debugging hangs).
+        # `docker kill -s USR1 bard-board-mumble` prints the stack of every thread into the log (debugging hangs).
         faulthandler.register(signal.SIGUSR1, all_threads=True)
     try:
         cfg = Config.from_env()
@@ -37,7 +37,7 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     log = logging.getLogger("main")
-    log.info("claudemumble %s für %s (%s)", __version__, cfg.platform.capitalize(), opus_version())
+    log.info("bard-board %s für %s (%s)", __version__, cfg.platform.capitalize(), opus_version())
     if cfg.ytdlp_auto_update:
         update_ytdlp()
     log.info("yt-dlp %s", Resolver.version())

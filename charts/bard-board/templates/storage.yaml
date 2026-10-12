@@ -1,4 +1,4 @@
-{{- $fullname := include "claudemumble.fullname" . -}}
+{{- $fullname := include "bard-board.fullname" . -}}
 {{- with .Values.persistence.sounds }}
 {{- if not .existingClaim }}
 ---
@@ -7,7 +7,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $fullname }}-sounds
   labels:
-    {{- include "claudemumble.labels" $ | nindent 4 }}
+    {{- include "bard-board.labels" $ | nindent 4 }}
   annotations:
     # Hochgeladene Sounds überleben ein "helm uninstall".
     helm.sh/resource-policy: keep
@@ -29,7 +29,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $fullname }}-collections
   labels:
-    {{- include "claudemumble.labels" $ | nindent 4 }}
+    {{- include "bard-board.labels" $ | nindent 4 }}
   annotations:
     helm.sh/resource-policy: keep
 spec:

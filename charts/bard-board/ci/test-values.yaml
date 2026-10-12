@@ -1,6 +1,6 @@
 # Werte für "helm lint" und "helm template" in der CI: alles eingeschaltet, Secrets nur als Namen.
 image:
-  repository: ghcr.io/example/claudemumble
+  repository: ghcr.io/example/bard-board
   tag: ci
 mumble:
   existingSecret: mumble-zugang

@@ -2,7 +2,7 @@
 # Keine Zugangsdaten hier eintragen, nur die Namen der Secrets (siehe DEPLOYMENT.md).
 
 image:
-  repository: ghcr.io/thezasa/dumbleboard
+  repository: ghcr.io/thezasa/bard-board
 
 # Nur nötig, solange das Paket auf GitHub privat ist.
 imagePullSecrets:

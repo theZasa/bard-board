@@ -1,7 +1,7 @@
 {{- if .Values.ingress.enabled }}
 {{- $root := . -}}
-{{- $fullname := include "claudemumble.fullname" . -}}
-{{- range $bot := splitList "," (include "claudemumble.bots" .) | compact }}
+{{- $fullname := include "bard-board.fullname" . -}}
+{{- range $bot := splitList "," (include "bard-board.bots" .) | compact }}
 {{- $host := required (printf "%s.ingress.host fehlt" $bot) (index $root.Values $bot).ingress.host }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -9,7 +9,7 @@ kind: Ingress
 metadata:
   name: {{ $fullname }}-{{ $bot }}
   labels:
-    {{- include "claudemumble.labels" $root | nindent 4 }}
+    {{- include "bard-board.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $bot }}
   {{- with $root.Values.ingress.annotations }}
   annotations:

@@ -5,7 +5,7 @@ Das lokale Setup mit `start.bat` und Docker Desktop bleibt davon unberührt und 
 
 ## Überblick
 
-Das Helm-Chart unter `charts/claudemumble` startet bis zu zwei Bots aus demselben Image:
+Das Helm-Chart unter `charts/bard-board` startet bis zu zwei Bots aus demselben Image:
 
 | Teil | Was | Speicher |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ Alternativ das Paket auf GitHub öffentlich schalten; das Image enthält keine Z
 Die Datei enthält nur Namen von Secrets, keine Zugangsdaten, und darf ins Repository.
 
 ```bash
-helm upgrade --install soundboard charts/claudemumble -n soundboard \
+helm upgrade --install soundboard charts/bard-board -n soundboard \
   -f deploy/values.yaml --set image.tag=sha-1234567
 ```
 
@@ -91,35 +91,35 @@ Die Volumes sind anfangs leer.
 Zum Befüllen gibt es einen Hilfs-Pod, der nichts tut außer bereitzustehen:
 
 ```bash
-helm upgrade soundboard charts/claudemumble -n soundboard --reuse-values --set uploader.enabled=true
+helm upgrade soundboard charts/bard-board -n soundboard --reuse-values --set uploader.enabled=true
 ```
 
 Dann vom eigenen PC aus kopieren (Windows bringt `tar` mit; in PowerShell im Ordner mit den Dateien ausführen):
 
 ```bash
 # Board-Sounds (Inhalt des lokalen sounds-Ordners)
-tar -C sounds -cf - . | kubectl -n soundboard exec -i deploy/soundboard-claudemumble-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /sounds
+tar -C sounds -cf - . | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /sounds
 
 # Eine Sammlung, z. B. die AoE2-Taunts aus dem Projektordner
-tar -C collections -cf - AoE2 | kubectl -n soundboard exec -i deploy/soundboard-claudemumble-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /collections
+tar -C collections -cf - AoE2 | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /collections
 
 # Eine Sammlung aus einem anderen Ordner, unter dem Namen, den sie im Soundboard haben soll
-tar -C "$env:USERPROFILE\sounds" -cf - "dota chatwheel" | kubectl -n soundboard exec -i deploy/soundboard-claudemumble-dateien -- sh -c 'mkdir -p "/collections/Dota Chatwheel" && tar -xf - --no-overwrite-dir --no-same-owner --strip-components=1 -C "/collections/Dota Chatwheel"'
+tar -C "$env:USERPROFILE\sounds" -cf - "dota chatwheel" | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- sh -c 'mkdir -p "/collections/Dota Chatwheel" && tar -xf - --no-overwrite-dir --no-same-owner --strip-components=1 -C "/collections/Dota Chatwheel"'
 ```
 
 Neue Sammlungen erkennen die Bots ohne Neustart beim nächsten Einlesen (alle 10 Minuten) oder sofort über den Neu-laden-Knopf im Webinterface.
 Danach den Hilfs-Pod wieder ausschalten:
 
 ```bash
-helm upgrade soundboard charts/claudemumble -n soundboard --reuse-values --set uploader.enabled=false
+helm upgrade soundboard charts/bard-board -n soundboard --reuse-values --set uploader.enabled=false
 ```
 
 Join-Sounds, Kürzel, Sender und Statistik liegen lokal in `data` (Mumble) und `data-discord` (Discord).
 Wer sie mitnehmen will, kopiert die JSON-Dateien in das Daten-Volume des jeweiligen Bots und startet ihn neu:
 
 ```bash
-tar -C data -cf - joinsounds.json aliases.json radio.json library.json settings.json | kubectl -n soundboard exec -i deploy/soundboard-claudemumble-mumble -- tar -xf - -C /data
-kubectl -n soundboard rollout restart deploy/soundboard-claudemumble-mumble
+tar -C data -cf - joinsounds.json aliases.json radio.json library.json settings.json | kubectl -n soundboard exec -i deploy/soundboard-bard-board-mumble -- tar -xf - -C /data
+kubectl -n soundboard rollout restart deploy/soundboard-bard-board-mumble
 ```
 
 ### Später: Sammlungen aus einem S3-Bucket
@@ -144,7 +144,7 @@ Die GitHub Actions in `.github/workflows/ci.yml` laufen bei jedem Push:
 2. Prüfung des Helm-Charts (`helm lint`, Schema-Prüfung mit kubeconform).
 3. Auf `main`: Image bauen, im Container testen und als `ghcr.io/<owner>/<repo>` hochladen, Tags `sha-…`, `main` und `latest`.
 4. Nachts: neues Image mit aktuellem yt-dlp (Tag `nightly-JJJJMMTT-…`), weil YouTube regelmäßig etwas ändert.
-5. Bei einem Git-Tag `v1.2.3`: zusätzlich Image-Tags `1.2.3` und `1.2` sowie das Chart als `oci://ghcr.io/<owner>/charts/claudemumble`.
+5. Bei einem Git-Tag `v1.2.3`: zusätzlich Image-Tags `1.2.3` und `1.2` sowie das Chart als `oci://ghcr.io/<owner>/charts/bard-board`.
 
 Automatisch ausrollen ist optional.
 Dafür im Repository unter Settings → Environments eine Umgebung `production` anlegen, darin ein Secret `KUBECONFIG` mit dem Zugang zum Namespace hinterlegen und `deploy/values.yaml` committen.
@@ -157,6 +157,6 @@ Namespace und Release-Name lassen sich über die Variablen `K8S_NAMESPACE` und `
 Das Chart lässt sich ohne Cluster prüfen:
 
 ```bash
-helm lint charts/claudemumble -f charts/claudemumble/ci/test-values.yaml
-helm template test charts/claudemumble -f deploy/values.example.yaml
+helm lint charts/bard-board -f charts/bard-board/ci/test-values.yaml
+helm template test charts/bard-board -f deploy/values.example.yaml
 ```

@@ -166,6 +166,15 @@ else {
     docker compose --profile discord rm --stop --force discord *> $null
 }
 
+# Renamed from claudemumble: remove the old containers, otherwise their restart policy
+# brings them back and they hold the ports. Data lives in bind mounts and is kept.
+$oldContainers = @(docker ps -aq --filter 'name=^claudemumble(-discord)?$')
+if ($oldContainers.Count -gt 0) {
+    Info 'Entferne die alten Container "claudemumble" (Daten bleiben erhalten) ...'
+    docker rm --force $oldContainers *> $null
+    docker network rm claudemumble_default *> $null
+}
+
 Info 'Baue und starte die Container (beim ersten Mal dauert das ein paar Minuten) ...'
 docker compose @composeArgs up -d --build --remove-orphans
 if ($LASTEXITCODE -ne 0) { Fail 'docker compose up ist fehlgeschlagen (Ausgabe oben).' }

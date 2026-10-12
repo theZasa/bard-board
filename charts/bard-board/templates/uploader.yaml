@@ -1,11 +1,11 @@
 {{- if .Values.uploader.enabled }}
-{{- $fullname := include "claudemumble.fullname" . -}}
+{{- $fullname := include "bard-board.fullname" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $fullname }}-dateien
   labels:
-    {{- include "claudemumble.labels" . | nindent 4 }}
+    {{- include "bard-board.labels" . | nindent 4 }}
     app.kubernetes.io/component: dateien
 spec:
   replicas: 1
@@ -13,11 +13,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "dateien") | nindent 6 }}
+      {{- include "bard-board.selectorLabels" (dict "root" . "bot" "dateien") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "dateien") | nindent 8 }}
+        {{- include "bard-board.selectorLabels" (dict "root" . "bot" "dateien") | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -29,7 +29,7 @@ spec:
       containers:
         # Dasselbe Image wie die Bots (bringt tar mit), es läuft nur ein "sleep".
         - name: dateien
-          image: {{ include "claudemumble.image" . }}
+          image: {{ include "bard-board.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sleep", "infinity"]
           securityContext:
@@ -48,11 +48,11 @@ spec:
       volumes:
         - name: sounds
           persistentVolumeClaim:
-            claimName: {{ include "claudemumble.soundsClaim" . }}
+            claimName: {{ include "bard-board.soundsClaim" . }}
         {{- if .Values.persistence.collections.enabled }}
         - name: collections
           persistentVolumeClaim:
-            claimName: {{ include "claudemumble.collectionsClaim" . }}
+            claimName: {{ include "bard-board.collectionsClaim" . }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

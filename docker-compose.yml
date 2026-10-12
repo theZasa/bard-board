@@ -1,4 +1,4 @@
-name: claudemumble
+name: bard-board
 
 # Zwei Bots aus demselben Image: "soundboard" fuer Mumble und "discord" fuer Discord.
 # Sounds und Sammlungen teilen sich beide, alles andere (Warteschlange, Lautstaerke, Join-Sounds,
@@ -7,7 +7,7 @@ name: claudemumble
 # sobald in %USERPROFILE%\.claudemumble\discord.env ein Token steht).
 
 x-common: &common
-  image: claudemumble:latest
+  image: bard-board:latest
   restart: unless-stopped
   stop_grace_period: 10s
   logging:
@@ -20,7 +20,7 @@ services:
   soundboard:
     <<: *common
     build: .
-    container_name: claudemumble
+    container_name: bard-board-mumble
     env_file:
       # Unkritische Einstellungen (liegt im Projektordner)
       - path: .env
@@ -48,7 +48,7 @@ services:
 
   discord:
     <<: *common
-    container_name: claudemumble-discord
+    container_name: bard-board-discord
     profiles: ["discord"]
     # Dasselbe Image, das "soundboard" baut
     pull_policy: never

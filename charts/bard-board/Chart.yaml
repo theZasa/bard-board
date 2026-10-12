@@ -1,5 +1,5 @@
 apiVersion: v2
-name: claudemumble
+name: bard-board
 description: Soundboard-Bots für Mumble und Discord mit Webinterface (Sounds, Musik, Sammlungen)
 type: application
 # Version des Charts; die CI setzt beide Versionen beim Release aus dem Git-Tag.
