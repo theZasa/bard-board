@@ -10,4 +10,4 @@ cryptography>=44
 # [default] includes yt-dlp-ejs, needed together with Deno for YouTube.
 yt-dlp[default]>=2025.11.12
 # Offline text-to-speech (the voice model is downloaded in the Dockerfile).
-piper-tts>=1.3
+piper-tts>=1.8.0
