@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: ${{ env.HELM_VERSION }}
       - name: kubeconform
@@ -221,7 +221,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: ${{ env.HELM_VERSION }}
       - name: Paketieren und hochladen
@@ -255,7 +255,7 @@ jobs:
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         if: steps.access.outputs.ok == 'true'
         with:
           version: ${{ env.HELM_VERSION }}
