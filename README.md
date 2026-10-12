@@ -113,7 +113,7 @@ Nach einer Änderung `start.bat` ausführen.
 | `MAX_PLAYLIST_ITEMS` | `100` | Höchstens so viele Titel aus einer Playlist |
 | `MAX_CLIP_SECONDS` | `60` | Maximale Länge eines Clips |
 | `CLIP_CATEGORY` | `YouTube Clips` | Unterordner für neue Clips |
-| `YTDLP_AUTO_UPDATE` | `true` | yt-dlp bei jedem Start aktualisieren |
+| `YTDLP_AUTO_UPDATE` | `true` | yt-dlp beim Start aktualisieren und täglich nach neuen Versionen sehen |
 | `JOIN_SOUNDS` | `true` | Join-Sounds an oder aus |
 | `JOIN_SOUND_COOLDOWN` | `600` | Mindestabstand in Sekunden zwischen zwei Join-Sounds derselben Person |
 | `TTS_MAX_CHARS` | `300` | Maximale Textlänge für `/tts` |
@@ -183,6 +183,8 @@ Die Warteschlange steht in der Seitenleiste, dort lassen sich Titel per Ziehen u
 - Bricht ein Stream ab, setzt der Bot an derselben Stelle fort.
 - Lehnt YouTube einen Stream ab (Fehler 403), holt der Bot erst eine frische Stream-Adresse und lädt notfalls über den eigenen Downloader von yt-dlp, der YouTubes Eigenheiten kennt.
 - yt-dlp aktualisiert sich bei jedem Start selbst, weil YouTube regelmäßig Dinge ändert.
+  Außerdem sieht der Bot einmal am Tag nach, ob es eine neue Version gibt.
+  Dann startet er sich kurz neu, sobald gerade nichts läuft, und ist nach wenigen Sekunden wieder im Kanal.
   Spielt YouTube einmal gar nichts mehr, hilft meist ein Neustart über `start.bat`.
 
 ## Durchsagen, Pull-Timer, Join-Sounds und Kürzel

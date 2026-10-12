@@ -30,6 +30,8 @@ Volumes mit Daten bleiben bei `helm uninstall` erhalten.
   - HTTPS zu `discord.com` und `gateway.discord.gg`.
   - **UDP** zu Discords Sprachservern (wechselnde Adressen und Ports); ohne UDP verbindet sich der Discord-Bot, bleibt aber stumm.
   - HTTPS zu YouTube und `googlevideo.com` für die Musik.
+  - HTTPS zu `pypi.org` und `files.pythonhosted.org`: yt-dlp aktualisiert sich beim Start und sieht täglich nach neuen Versionen.
+    Ohne diesen Zugang läuft der Bot mit der yt-dlp-Version aus dem Image weiter.
 - Ressourcen: pro Bot 0,1 CPU und 256 MiB reserviert, höchstens 1 GiB Arbeitsspeicher.
 
 ## 1. Secrets anlegen
@@ -161,12 +163,15 @@ Die GitHub Actions in `.github/workflows/ci.yml` laufen bei jedem Push:
 1. Lint (ruff, shellcheck), Unit-Tests und ein End-to-End-Test gegen einen echten Mumble-Server.
 2. Prüfung des Helm-Charts (`helm lint`, Schema-Prüfung mit kubeconform).
 3. Auf `main`: Image bauen, im Container testen und als `ghcr.io/<owner>/<repo>` hochladen, Tags `sha-…`, `main` und `latest`.
-4. Nachts: neues Image mit aktuellem yt-dlp (Tag `nightly-JJJJMMTT-…`), weil YouTube regelmäßig etwas ändert.
-5. Bei einem Git-Tag `v1.2.3`: zusätzlich Image-Tags `1.2.3` und `1.2` sowie das Chart als `oci://ghcr.io/<owner>/charts/bard-board`.
+4. Bei einem Git-Tag `v1.2.3`: zusätzlich Image-Tags `1.2.3` und `1.2` sowie das Chart als `oci://ghcr.io/<owner>/charts/bard-board`.
+
+Für ein neues yt-dlp braucht es kein neues Image.
+Der Bot aktualisiert es beim Start und sieht täglich nach; gibt es eine neue Version, startet er sich kurz selbst neu, sobald nichts läuft.
+Kubernetes merkt davon nichts (kein Pod-Neustart), im Log steht „Neues yt-dlp …“.
 
 Automatisch ausrollen ist optional.
 Dafür im Repository unter Settings → Environments eine Umgebung `production` anlegen, darin ein Secret `KUBECONFIG` mit dem Zugang zum Namespace hinterlegen und `deploy/values.yaml` committen.
-Dann rollt jeder erfolgreiche Build von `main` und jeder nächtliche Build per `helm upgrade` aus.
+Dann rollt jeder erfolgreiche Build von `main` per `helm upgrade` aus.
 Ohne dieses Secret bleibt es beim Bauen; ausgerollt wird dann von Hand mit dem Befehl aus Schritt 2.
 Namespace und Release-Name lassen sich über die Variablen `K8S_NAMESPACE` und `HELM_RELEASE` anpassen (Standard: `soundboard`).
 

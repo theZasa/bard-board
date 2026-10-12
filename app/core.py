@@ -12,9 +12,11 @@ import shutil
 import tempfile
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import updater
 from .audio import AudioCache, DecodeError
 from .catalog import Collection, Collections, Item
 from .config import Config
@@ -34,6 +36,7 @@ log = logging.getLogger("soundboard")
 SCAN_INTERVAL = 4.0
 CATALOG_RESCAN = 10 * 60
 CATALOG_FULL_EVERY = 6  # every sixth rescan (hourly) ignores the per-folder shortcut
+IDLE_POLL = 60  # seconds between checks whether a pending yt-dlp restart can happen
 JOIN_SOUND_DELAY = 1.0  # give the joining client a moment before the sound starts
 COUNT_WORDS = {1: "Eins", 2: "Zwei", 3: "Drei", 4: "Vier", 5: "Fünf"}
 
@@ -117,6 +120,9 @@ class Soundboard:
         self._move_attempts = 0
         self._last_move: tuple[ChannelId | None, float] = (None, 0.0)
         self._reconcile_event = asyncio.Event()
+        # Set when the soundboard stops to load a new yt-dlp; main() then starts the process again.
+        self.restart_requested = False
+        self.shutdown_hook: Callable[[], None] | None = None
         # Imported lazily to avoid a circular import (commands needs Soundboard types).
         from .commands import CommandHandler
 
@@ -158,6 +164,8 @@ class Soundboard:
             asyncio.create_task(self.speech.warm_up(), name="tts-warmup"),
             asyncio.create_task(self._catalog_loop(), name="catalog"),
         ]
+        if self.cfg.ytdlp_auto_update and updater.can_update():
+            self._tasks.append(asyncio.create_task(self._ytdlp_loop(), name="ytdlp-update"))
         self.log_activity("System", "system", "Soundboard gestartet")
 
     async def stop(self) -> None:
@@ -198,6 +206,33 @@ class Soundboard:
         removed = await asyncio.to_thread(self.cache.prune, [s.path for s in self.library.sounds.values()])
         if removed:
             log.info("%d veraltete Cache-Dateien entfernt", removed)
+
+    async def _ytdlp_loop(self) -> None:
+        """Once a day: is there a newer yt-dlp? Then restart as soon as nothing is playing; the upgrade
+        at startup installs it. The running process cannot swap a module it has already imported."""
+        while True:
+            await asyncio.sleep(updater.CHECK_INTERVAL)
+            installed = updater.installed_version()
+            latest = await asyncio.to_thread(updater.latest_version)
+            if not updater.is_newer(latest, installed):
+                continue
+            log.info("Neues yt-dlp %s (installiert: %s), Neustart sobald nichts läuft", latest, installed)
+            while not self.is_idle():
+                await asyncio.sleep(IDLE_POLL)
+            self.log_activity("System", "system", f"Neustart für yt-dlp {latest}")
+            self.request_restart()
+            return
+
+    def is_idle(self) -> bool:
+        """Nothing audible and nothing about to be: no sounds, no running music, no pull timer, no commands."""
+        return (not self.mixer.playing and self.music.state in ("idle", "paused") and self.pull is None
+                and not self._command_tasks)
+
+    def request_restart(self) -> None:
+        """Stop gracefully like on `docker stop`; main() then starts the process again."""
+        self.restart_requested = True
+        if self.shutdown_hook:
+            self.shutdown_hook()
 
     async def _flush_meta_loop(self) -> None:
         while True:

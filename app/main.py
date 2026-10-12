@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import faulthandler
 import logging
+import os
 import signal
 import sys
 
@@ -57,7 +58,7 @@ def main() -> int:
     app = create_app(board)
     log.info("Webinterface lauscht auf %s:%s%s", cfg.web_host, cfg.web_port,
              " (mit Passwort)" if cfg.web_password else "")
-    uvicorn.run(
+    server = uvicorn.Server(uvicorn.Config(
         app,
         host=cfg.web_host,
         port=cfg.web_port,
@@ -65,7 +66,21 @@ def main() -> int:
         ws="websockets-sansio",
         proxy_headers=False,
         server_header=False,
-    )
+    ))
+
+    def shutdown() -> None:
+        server.should_exit = True
+
+    board.shutdown_hook = shutdown
+    server.run()
+    if board.restart_requested:
+        # Replace this process instead of relying on Docker/Kubernetes to restart it: same PID, no
+        # restart counter, and it also works without a container. The startup upgrade loads the new yt-dlp.
+        log.info("Starte neu, um das neue yt-dlp zu laden ...")
+        logging.shutdown()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.execv(sys.executable, [sys.executable, "-m", "app.main"])
     return 0
 
 
