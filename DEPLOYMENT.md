@@ -108,39 +108,28 @@ Den Tag `sha-…` zeigt GitHub unter „Packages“ für jeden Build von `main` 
 ## 3. Sounds, Sammlungen und Daten übertragen
 
 Die Volumes sind anfangs leer.
-Zum Befüllen gibt es einen Hilfs-Pod, der nichts tut außer bereitzustehen:
+Sounds und Sammlungen kommen nie über GitHub: Sie stehen weder im Repository noch im Image.
+
+Auf dem eigenen PC `export.bat` doppelklicken.
+Es packt Board-Sounds, alle Sammlungen (mit den Namen, die sie im Webinterface haben) sowie Join-Sounds, Kürzel, Sender, Favoriten und Statistik beider Bots in eine Datei:
+`%USERPROFILE%ard-board-exportard-board-daten.tar`, dazu eine Prüfsumme und `ANLEITUNG.md`.
+Zertifikat, Zugangsdaten und Caches sind nicht enthalten.
+Diesen Ordner privat weitergeben, z. B. per USB-Stick oder privatem Cloud-Link.
+
+Eingespielt wird über einen Hilfs-Pod, der Sounds, Sammlungen und die Daten-Volumes der Bots eingebunden hat.
+Die Bots laufen währenddessen nicht, weil sie beim Beenden ihre Daten zurückschreiben und die eingespielten sonst überschreiben würden.
+Die genauen Befehle stehen in der mitgelieferten `ANLEITUNG.md`, kurz:
 
 ```bash
-helm upgrade soundboard charts/bard-board -n soundboard --reuse-values --set uploader.enabled=true
+kubectl -n soundboard scale deploy/soundboard-bard-board-mumble deploy/soundboard-bard-board-discord --replicas=0
+helm upgrade soundboard oci://ghcr.io/thezasa/charts/bard-board -n soundboard --reuse-values --version <Version> --set uploader.enabled=true
+kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- tar -xf - --no-same-owner --no-overwrite-dir -C / < bard-board-daten.tar
+helm upgrade soundboard oci://ghcr.io/thezasa/charts/bard-board -n soundboard --reuse-values --version <Version> --set uploader.enabled=false
+kubectl -n soundboard scale deploy/soundboard-bard-board-mumble deploy/soundboard-bard-board-discord --replicas=1
 ```
 
-Dann vom eigenen PC aus kopieren (Windows bringt `tar` mit; in PowerShell im Ordner mit den Dateien ausführen):
-
-```bash
-# Board-Sounds (Inhalt des lokalen sounds-Ordners)
-tar -C sounds -cf - . | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /sounds
-
-# Eine Sammlung, z. B. die AoE2-Taunts aus dem Projektordner
-tar -C collections -cf - AoE2 | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- tar -xf - --no-overwrite-dir --no-same-owner -C /collections
-
-# Eine Sammlung aus einem anderen Ordner, unter dem Namen, den sie im Soundboard haben soll
-tar -C "$env:USERPROFILE\sounds" -cf - "dota chatwheel" | kubectl -n soundboard exec -i deploy/soundboard-bard-board-dateien -- sh -c 'mkdir -p "/collections/Dota Chatwheel" && tar -xf - --no-overwrite-dir --no-same-owner --strip-components=1 -C "/collections/Dota Chatwheel"'
-```
-
+Später neu hinzugekommene Sammlungen lassen sich genauso nachliefern; vorhandene Dateien werden dabei überschrieben, nichts wird gelöscht.
 Neue Sammlungen erkennen die Bots ohne Neustart beim nächsten Einlesen (alle 10 Minuten) oder sofort über den Neu-laden-Knopf im Webinterface.
-Danach den Hilfs-Pod wieder ausschalten:
-
-```bash
-helm upgrade soundboard charts/bard-board -n soundboard --reuse-values --set uploader.enabled=false
-```
-
-Join-Sounds, Kürzel, Sender und Statistik liegen lokal in `data` (Mumble) und `data-discord` (Discord).
-Wer sie mitnehmen will, kopiert die JSON-Dateien in das Daten-Volume des jeweiligen Bots und startet ihn neu:
-
-```bash
-tar -C data -cf - joinsounds.json aliases.json radio.json library.json settings.json | kubectl -n soundboard exec -i deploy/soundboard-bard-board-mumble -- tar -xf - -C /data
-kubectl -n soundboard rollout restart deploy/soundboard-bard-board-mumble
-```
 
 ### Später: Sammlungen aus einem S3-Bucket
 

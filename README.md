@@ -24,6 +24,7 @@ Es startet den Bot oder baut ihn nach Änderungen am Code neu.
 | `stop.bat` | Bots beenden |
 | `logs.bat` | Live-Log anzeigen |
 | `zugangsdaten.bat` | Zugangsdaten (Mumble oder Discord) bearbeiten und Bots neu starten |
+| `export.bat` | Sounds, Sammlungen und Daten in eine Datei für den Kubernetes-Cluster packen |
 
 Discord ist optional, die Einrichtung steht unter [Discord einrichten](#discord-einrichten).
 
