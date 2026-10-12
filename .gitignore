@@ -15,3 +15,5 @@ Claude outputs/
 .ci/
 .ruff_cache/
 *.tgz
+# Lokaler Leitfaden für Claude Code, gehört nicht ins Repo
+CLAUDE.md

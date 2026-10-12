@@ -1,12 +1,12 @@
 {{- $c := .Values.persistence.collections -}}
 {{- if and $c.enabled $c.sync.enabled }}
-{{- $fullname := include "claudemumble.fullname" . -}}
+{{- $fullname := include "bard-board.fullname" . -}}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: {{ $fullname }}-collections-sync
   labels:
-    {{- include "claudemumble.labels" . | nindent 4 }}
+    {{- include "bard-board.labels" . | nindent 4 }}
     app.kubernetes.io/component: collections-sync
 spec:
   schedule: {{ $c.sync.schedule | quote }}
@@ -19,7 +19,7 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "collections-sync") | nindent 12 }}
+            {{- include "bard-board.selectorLabels" (dict "root" . "bot" "collections-sync") | nindent 12 }}
         spec:
           restartPolicy: Never
           securityContext:
@@ -48,7 +48,7 @@ spec:
           volumes:
             - name: collections
               persistentVolumeClaim:
-                claimName: {{ include "claudemumble.collectionsClaim" . }}
+                claimName: {{ include "bard-board.collectionsClaim" . }}
             - name: config
               secret:
                 secretName: {{ required "persistence.collections.sync.configSecret fehlt (Secret mit rclone.conf)" $c.sync.configSecret }}

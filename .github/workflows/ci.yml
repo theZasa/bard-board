@@ -126,18 +126,18 @@ jobs:
             | tar -xz -C /usr/local/bin kubeconform
       - name: Lint und Schema-Prüfung
         run: |
-          helm lint charts/claudemumble -f charts/claudemumble/ci/test-values.yaml --strict
-          for values in charts/claudemumble/ci/test-values.yaml deploy/values.example.yaml; do
-            helm template ci charts/claudemumble -f "$values" \
+          helm lint charts/bard-board -f charts/bard-board/ci/test-values.yaml --strict
+          for values in charts/bard-board/ci/test-values.yaml deploy/values.example.yaml; do
+            helm template ci charts/bard-board -f "$values" \
               | kubeconform -strict -summary -kubernetes-version 1.31.0
           done
       - name: Pflichtangaben werden erzwungen
         run: |
           # Ohne Secret-Namen oder ohne Passwort bei öffentlichem Ingress darf das Chart nicht rendern.
-          if helm template ci charts/claudemumble > /dev/null; then
+          if helm template ci charts/bard-board > /dev/null; then
             echo "::error::Chart rendert ohne mumble.existingSecret"; exit 1
           fi
-          if helm template ci charts/claudemumble --set mumble.existingSecret=x --set ingress.enabled=true > /dev/null; then
+          if helm template ci charts/bard-board --set mumble.existingSecret=x --set ingress.enabled=true > /dev/null; then
             echo "::error::Chart rendert einen öffentlichen Ingress ohne Passwort"; exit 1
           fi
 
@@ -167,15 +167,15 @@ jobs:
         with:
           context: .
           load: true
-          tags: claudemumble:ci
+          tags: bard-board:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Image testen
         run: |
-          docker run --rm claudemumble:ci python -m unittest discover -s tests -t .
-          docker run --rm claudemumble:ci python -c "import discord, davey, nacl; print('Discord-Sprache verfügbar')"
+          docker run --rm bard-board:ci python -m unittest discover -s tests -t .
+          docker run --rm bard-board:ci python -c "import discord, davey, nacl; print('Discord-Sprache verfügbar')"
           # Startet ohne Mumble-Server, Webinterface mit Passwort, /healthz bleibt offen.
-          docker run -d --name smoke -p 8080:8080 -e MUMBLE_HOST=127.0.0.1 -e WEB_PASSWORD=ci -e YTDLP_AUTO_UPDATE=false claudemumble:ci
+          docker run -d --name smoke -p 8080:8080 -e MUMBLE_HOST=127.0.0.1 -e WEB_PASSWORD=ci -e YTDLP_AUTO_UPDATE=false bard-board:ci
           for _ in $(seq 1 30); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 2; done
           curl -fs http://127.0.0.1:8080/healthz
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 401
@@ -186,7 +186,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Image heißt wie das Repository, z. B. ghcr.io/thezasa/dumbleboard
+          # Image heißt wie das Repository, z. B. ghcr.io/thezasa/bard-board
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
@@ -228,9 +228,9 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#v}
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-          helm package charts/claudemumble --version "$version" --app-version "$version"
+          helm package charts/bard-board --version "$version" --app-version "$version"
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm push "claudemumble-$version.tgz" "oci://ghcr.io/$owner/charts"
+          helm push "bard-board-$version.tgz" "oci://ghcr.io/$owner/charts"
 
   deploy:
     name: Ausrollen
@@ -270,7 +270,7 @@ jobs:
           printf '%s' "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           image=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
-          helm upgrade --install "$RELEASE" charts/claudemumble \
+          helm upgrade --install "$RELEASE" charts/bard-board \
             --namespace "$NAMESPACE" \
             -f deploy/values.yaml \
             --set image.repository="$image" \

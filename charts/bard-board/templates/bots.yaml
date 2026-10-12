@@ -1,6 +1,6 @@
 {{- $root := . -}}
-{{- $fullname := include "claudemumble.fullname" . -}}
-{{- $bots := splitList "," (include "claudemumble.bots" .) | compact -}}
+{{- $fullname := include "bard-board.fullname" . -}}
+{{- $bots := splitList "," (include "bard-board.bots" .) | compact -}}
 {{- if empty $bots }}
 {{- fail "Mindestens einer der Bots muss aktiv sein (mumble.enabled oder discord.enabled)." }}
 {{- end }}
@@ -19,7 +19,7 @@ kind: ConfigMap
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "claudemumble.labels" $root | nindent 4 }}
+    {{- include "bard-board.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $bot }}
 data:
   {{- range $key, $value := $settings }}
@@ -32,7 +32,7 @@ data:
   WEB_HOST: "0.0.0.0"
   WEB_PORT: "8080"
   {{- if has $other $bots }}
-  {{- with include "claudemumble.url" (dict "root" $root "bot" $other) }}
+  {{- with include "bard-board.url" (dict "root" $root "bot" $other) }}
   PEER_WEB_URL: {{ . | quote }}
   {{- end }}
   {{- end }}
@@ -46,7 +46,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $name }}-data
   labels:
-    {{- include "claudemumble.labels" $root | nindent 4 }}
+    {{- include "bard-board.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $bot }}
   annotations:
     # Warteschlange, Join-Sounds und Zertifikat überleben ein "helm uninstall".
@@ -65,12 +65,12 @@ kind: Service
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "claudemumble.labels" $root | nindent 4 }}
+    {{- include "bard-board.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $bot }}
 spec:
   type: {{ $root.Values.service.type }}
   selector:
-    {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 4 }}
+    {{- include "bard-board.selectorLabels" (dict "root" $root "bot" $bot) | nindent 4 }}
   ports:
     - name: http
       port: {{ $root.Values.service.port }}
@@ -81,7 +81,7 @@ kind: Deployment
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "claudemumble.labels" $root | nindent 4 }}
+    {{- include "bard-board.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $bot }}
 spec:
   # Genau ein Bot pro Plattform: zwei Instanzen mit demselben Namen/Token würden sich gegenseitig rauswerfen.
@@ -90,11 +90,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 6 }}
+      {{- include "bard-board.selectorLabels" (dict "root" $root "bot" $bot) | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" $bot) | nindent 8 }}
+        {{- include "bard-board.selectorLabels" (dict "root" $root "bot" $bot) | nindent 8 }}
       annotations:
         # Neustart, wenn sich die Einstellungen ändern.
         checksum/settings: {{ $settings | toJson | sha256sum | trunc 16 }}
@@ -108,7 +108,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: {{ $bot }}
-          image: {{ include "claudemumble.image" $root }}
+          image: {{ include "bard-board.image" $root }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           securityContext:
             {{- toYaml $root.Values.securityContext | nindent 12 }}
@@ -169,11 +169,11 @@ spec:
             claimName: {{ $name }}-data
         - name: sounds
           persistentVolumeClaim:
-            claimName: {{ include "claudemumble.soundsClaim" $root }}
+            claimName: {{ include "bard-board.soundsClaim" $root }}
         {{- if $root.Values.persistence.collections.enabled }}
         - name: collections
           persistentVolumeClaim:
-            claimName: {{ include "claudemumble.collectionsClaim" $root }}
+            claimName: {{ include "bard-board.collectionsClaim" $root }}
         {{- end }}
         {{- if and (eq $bot "mumble") $cfg.certificate.existingSecret }}
         - name: certs
@@ -204,7 +204,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  {{- include "claudemumble.selectorLabels" (dict "root" $root "bot" "mumble") | nindent 18 }}
+                  {{- include "bard-board.selectorLabels" (dict "root" $root "bot" "mumble") | nindent 18 }}
               topologyKey: kubernetes.io/hostname
       {{- end }}
 {{- end }}

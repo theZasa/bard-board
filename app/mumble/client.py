@@ -106,7 +106,7 @@ class MumbleClient:
         keyfile: str | None = None,
         listener: Listener,
         client_type: int = 1,
-        release: str = "claudemumble soundboard",
+        release: str = "bard-board soundboard",
     ) -> None:
         self.host = host
         self.port = port

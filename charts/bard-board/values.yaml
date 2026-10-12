@@ -1,8 +1,8 @@
-# Werte für das claudemumble-Chart.
+# Werte für das bard-board-Chart.
 # Zugangsdaten gehören NICHT in diese Datei, sondern in Kubernetes-Secrets (siehe existingSecret unten und DEPLOYMENT.md).
 
 image:
-  repository: ghcr.io/thezasa/dumbleboard
+  repository: ghcr.io/thezasa/bard-board
   # Leer = appVersion des Charts. In Produktion besser einen festen Tag oder Digest setzen.
   tag: ""
   pullPolicy: IfNotPresent
@@ -103,7 +103,7 @@ persistence:
       image: rclone/rclone:1.68.2
 
 # Hilfs-Pod zum Befüllen der Volumes (Sounds und Sammlungen beschreibbar), z. B. per
-#   tar -cf - anno1800 | kubectl exec -i deploy/<release>-claudemumble-dateien -- tar -xf - -C /collections
+#   tar -cf - anno1800 | kubectl exec -i deploy/<release>-bard-board-dateien -- tar -xf - -C /collections
 # Nur zum Übertragen einschalten, danach wieder aus (siehe DEPLOYMENT.md).
 uploader:
   enabled: false
