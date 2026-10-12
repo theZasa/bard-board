@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -241,6 +242,8 @@ class NumberedLinesTest(unittest.TestCase):
 class IncrementalLoadTest(unittest.TestCase):
     """A running export keeps adding files: rescans only read changed folders and skip partial files."""
 
+    # On Windows hosts unchanged folders get read again; the bot itself always runs on Linux.
+    @unittest.skipIf(sys.platform == "win32", "rescan detection is Linux-only; covered in CI and in the container")
     def test_rescan_picks_up_new_files_and_skips_partial_ones(self):
         with tempfile.TemporaryDirectory() as tmp:
             coll = Path(tmp) / "Dota 2"

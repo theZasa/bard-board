@@ -77,13 +77,31 @@ Alternativ das Paket auf GitHub öffentlich schalten; das Image enthält keine Z
 `deploy/values.example.yaml` nach `deploy/values.yaml` kopieren und die Hostnamen anpassen.
 Die Datei enthält nur Namen von Secrets, keine Zugangsdaten, und darf ins Repository.
 
+Das Chart liegt zu jedem Release (Git-Tag `v1.2.3`) in der GitHub Container Registry, ein Klonen des Repositorys ist nicht nötig.
+Image und Chart haben dieselbe Version, ohne `image.tag` nimmt das Chart das passende Image.
+
+```bash
+helm upgrade --install soundboard oci://ghcr.io/thezasa/charts/bard-board --version 1.0.0 \
+  -n soundboard -f values.yaml
+```
+
+Solange die Pakete auf GitHub privat sind, vorher einmal anmelden (derselbe Token wie für `ghcr-pull`):
+
+```bash
+helm registry login ghcr.io -u GITHUB-NAME
+```
+
+`helm show values oci://ghcr.io/thezasa/charts/bard-board --version 1.0.0` zeigt alle Einstellungen mit Erklärung.
+`helm status soundboard -n soundboard` zeigt nach der Installation die Adressen und Log-Befehle.
+
+Aus einem Klon des Repositorys geht es auch mit dem Chart-Ordner und einem beliebigen Build von `main`:
+
 ```bash
 helm upgrade --install soundboard charts/bard-board -n soundboard \
   -f deploy/values.yaml --set image.tag=sha-1234567
 ```
 
 Den Tag `sha-…` zeigt GitHub unter „Packages“ für jeden Build von `main` an.
-`helm status soundboard -n soundboard` zeigt danach die Adressen und Log-Befehle.
 
 ## 3. Sounds, Sammlungen und Daten übertragen
 
