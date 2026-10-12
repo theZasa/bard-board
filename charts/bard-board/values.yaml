@@ -14,8 +14,9 @@ imagePullSecrets: []
 settings:
   COMMAND_PREFIXES: "/,!"
   LOG_LEVEL: INFO
-  # Im Cluster aktualisiert sich yt-dlp nicht selbst; die CI baut das Image regelmäßig neu.
-  YTDLP_AUTO_UPDATE: "false"
+  # yt-dlp aktualisiert sich beim Start und sieht täglich nach neuen Versionen; ist eine da, startet
+  # der Bot kurz neu, sobald nichts läuft. "false" = immer die Version aus dem Image.
+  YTDLP_AUTO_UPDATE: "true"
   TZ: Europe/Berlin
 
 # Passwort für das Webinterface (beliebiger Benutzername). Pflicht, sobald ein Ingress aktiv ist.

@@ -1,14 +1,13 @@
 name: CI
 
 # Jeder Push und Pull Request wird geprüft. Auf main und bei Tags (v1.2.3) entstehen Image und Chart
-# in der GitHub Container Registry. Nachts wird das Image neu gebaut, damit yt-dlp aktuell bleibt.
+# in der GitHub Container Registry. yt-dlp hält der Bot selbst aktuell (app/updater.py), dafür braucht
+# es kein neues Image.
 on:
   push:
     branches: [main]
     tags: ["v*"]
   pull_request:
-  schedule:
-    - cron: "23 3 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -154,13 +153,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Unveränderlicher Tag für dieses Image
         id: tag
-        run: |
-          short=${GITHUB_SHA::7}
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-            echo "tag=nightly-$(date -u +%Y%m%d)-$short" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=sha-$short" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
       - name: Bauen (lokal, zum Testen)
         uses: docker/build-push-action@v7
