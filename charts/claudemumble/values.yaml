@@ -1,0 +1,127 @@
+# Werte für das claudemumble-Chart.
+# Zugangsdaten gehören NICHT in diese Datei, sondern in Kubernetes-Secrets (siehe existingSecret unten und DEPLOYMENT.md).
+
+image:
+  repository: ghcr.io/thezasa/dumbleboard
+  # Leer = appVersion des Charts. In Produktion besser einen festen Tag oder Digest setzen.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Für ein privates GHCR-Image: Secret vom Typ kubernetes.io/dockerconfigjson.
+imagePullSecrets: []
+
+# Einstellungen für beide Bots (bisher die .env). Keine Zugangsdaten.
+settings:
+  COMMAND_PREFIXES: "/,!"
+  LOG_LEVEL: INFO
+  # Im Cluster aktualisiert sich yt-dlp nicht selbst; die CI baut das Image regelmäßig neu.
+  YTDLP_AUTO_UPDATE: "false"
+  TZ: Europe/Berlin
+
+# Passwort für das Webinterface (beliebiger Benutzername). Pflicht, sobald ein Ingress aktiv ist.
+webPassword:
+  # Name eines vorhandenen Secrets mit dem Passwort unter `key`.
+  existingSecret: ""
+  key: WEB_PASSWORD
+
+mumble:
+  enabled: true
+  # Bot-spezifische Einstellungen, z. B. MUMBLE_CHANNEL, MUMBLE_FOLLOW_USER, MUMBLE_COMMENT.
+  settings: {}
+  # Pflicht: Secret mit MUMBLE_HOST, MUMBLE_PORT, MUMBLE_USER, MUMBLE_PASSWORD (und optional MUMBLE_TOKENS).
+  existingSecret: ""
+  certificate:
+    # Secret mit cert.pem und key.pem: die Identität des auf dem Server registrierten Bots.
+    # Leer = der Bot erzeugt beim ersten Start ein Zertifikat im Daten-Volume.
+    existingSecret: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  ingress:
+    host: soundboard.example.org
+
+discord:
+  enabled: false
+  # Bot-spezifische Einstellungen, z. B. DISCORD_GUILD, DISCORD_CHANNEL, DISCORD_ADMIN_ROLE.
+  settings: {}
+  # Pflicht: Secret mit DISCORD_TOKEN.
+  existingSecret: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  ingress:
+    host: discord.soundboard.example.org
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  # k3s bringt Traefik mit ("traefik"), sonst meist "nginx".
+  className: ""
+  annotations: {}
+  # z. B. cert-manager.io/cluster-issuer: letsencrypt
+  tls:
+    enabled: true
+    # Leer = <release>-<bot>-tls (passt zu cert-manager).
+    secretName: ""
+
+persistence:
+  # Je Bot ein eigenes Volume: Warteschlange, Join-Sounds, Favoriten, Cache, ggf. Zertifikat.
+  data:
+    storageClass: ""
+    size: 2Gi
+  # Board-Sounds: von beiden Bots gemeinsam genutzt und über das Webinterface beschreibbar.
+  # ReadWriteOnce reicht, solange beide Bots auf demselben Knoten laufen (das Chart sorgt dafür).
+  sounds:
+    existingClaim: ""
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 2Gi
+  # Große Sammlungen (Anno, Dota, WoW ...), für die Bots nur lesend.
+  collections:
+    enabled: true
+    existingClaim: ""
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+    # Optional: regelmäßiger Abgleich aus einem S3-Bucket (oder jedem anderen rclone-Ziel).
+    sync:
+      enabled: false
+      schedule: "17 * * * *"
+      # rclone-Quelle, z. B. "s3:mein-bucket/collections"
+      source: ""
+      # Secret mit dem Schlüssel rclone.conf
+      configSecret: ""
+      image: rclone/rclone:1.68.2
+
+# Hilfs-Pod zum Befüllen der Volumes (Sounds und Sammlungen beschreibbar), z. B. per
+#   tar -cf - anno1800 | kubectl exec -i deploy/<release>-claudemumble-dateien -- tar -xf - -C /collections
+# Nur zum Übertragen einschalten, danach wieder aus (siehe DEPLOYMENT.md).
+uploader:
+  enabled: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,66 @@
+{{- $c := .Values.persistence.collections -}}
+{{- if and $c.enabled $c.sync.enabled }}
+{{- $fullname := include "claudemumble.fullname" . -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fullname }}-collections-sync
+  labels:
+    {{- include "claudemumble.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collections-sync
+spec:
+  schedule: {{ $c.sync.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "collections-sync") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: rclone
+              image: {{ $c.sync.image }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              # Spiegelt den Bucket in das Volume; die Bots lesen alle 10 Minuten neu ein.
+              args:
+                - sync
+                - {{ required "persistence.collections.sync.source fehlt (z. B. s3:bucket/collections)" $c.sync.source | quote }}
+                - /collections
+                - --config=/config/rclone.conf
+                - --fast-list
+                - --transfers=8
+                - --stats-one-line
+                - --stats=60s
+              volumeMounts:
+                - name: collections
+                  mountPath: /collections
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+          volumes:
+            - name: collections
+              persistentVolumeClaim:
+                claimName: {{ include "claudemumble.collectionsClaim" . }}
+            - name: config
+              secret:
+                secretName: {{ required "persistence.collections.sync.configSecret fehlt (Secret mit rclone.conf)" $c.sync.configSecret }}
+          {{- if eq $c.accessMode "ReadWriteOnce" }}
+          # Das Volume hängt am Knoten der Bots: dort laufen.
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/instance: {{ .Release.Name }}
+                      app.kubernetes.io/name: {{ .Chart.Name }}
+                  topologyKey: kubernetes.io/hostname
+          {{- end }}
+{{- end }}

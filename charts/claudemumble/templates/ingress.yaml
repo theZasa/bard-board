@@ -1,0 +1,39 @@
+{{- if .Values.ingress.enabled }}
+{{- $root := . -}}
+{{- $fullname := include "claudemumble.fullname" . -}}
+{{- range $bot := splitList "," (include "claudemumble.bots" .) | compact }}
+{{- $host := required (printf "%s.ingress.host fehlt" $bot) (index $root.Values $bot).ingress.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-{{ $bot }}
+  labels:
+    {{- include "claudemumble.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $bot }}
+  {{- with $root.Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $root.Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if $root.Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ $host | quote }}]
+      secretName: {{ default (printf "%s-%s-tls" $fullname $bot) $root.Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-{{ $bot }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}

@@ -1,0 +1,73 @@
+name: claudemumble
+
+# Zwei Bots aus demselben Image: "soundboard" fuer Mumble und "discord" fuer Discord.
+# Sounds und Sammlungen teilen sich beide, alles andere (Warteschlange, Lautstaerke, Join-Sounds,
+# Favoriten, Statistik) hat jeder Bot fuer sich in seinem eigenen Datenordner.
+# Der Discord-Bot startet nur mit dem Profil "discord" (start.bat macht das automatisch,
+# sobald in %USERPROFILE%\.claudemumble\discord.env ein Token steht).
+
+x-common: &common
+  image: claudemumble:latest
+  restart: unless-stopped
+  stop_grace_period: 10s
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  soundboard:
+    <<: *common
+    build: .
+    container_name: claudemumble
+    env_file:
+      # Unkritische Einstellungen (liegt im Projektordner)
+      - path: .env
+        required: false
+      # Zugangsdaten - liegen bewusst AUSSERHALB des Projektordners
+      - path: ${USERPROFILE:-${HOME}}/.claudemumble/zugang.env
+        required: true
+    environment:
+      # Pfade und Port im Container sind fest, der Port am PC kommt aus HOST_PORT
+      PLATFORM: mumble
+      SOUNDS_DIR: /sounds
+      DATA_DIR: /data
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8080"
+      # Umschalter "Mumble | Discord" oben im Webinterface
+      PEER_WEB_PORT: ${DISCORD_HOST_PORT:-8081}
+    ports:
+      # Nur lokal erreichbar (127.0.0.1)
+      - "127.0.0.1:${HOST_PORT:-8080}:8080"
+    volumes:
+      - ./sounds:/sounds
+      - ./data:/data
+      # Große Sammlungen (z. B. alle Anno-Sprachzeilen), nur lesend: jeder Unterordner ist eine Sammlung
+      - ./collections:/collections:ro
+
+  discord:
+    <<: *common
+    container_name: claudemumble-discord
+    profiles: ["discord"]
+    # Dasselbe Image, das "soundboard" baut
+    pull_policy: never
+    env_file:
+      - path: .env
+        required: false
+      # Bot-Token - liegt bewusst AUSSERHALB des Projektordners
+      - path: ${USERPROFILE:-${HOME}}/.claudemumble/discord.env
+        required: true
+    environment:
+      PLATFORM: discord
+      SOUNDS_DIR: /sounds
+      DATA_DIR: /data
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8080"
+      PEER_WEB_PORT: ${HOST_PORT:-8080}
+    ports:
+      - "127.0.0.1:${DISCORD_HOST_PORT:-8081}:8080"
+    volumes:
+      - ./sounds:/sounds
+      - ./data-discord:/data
+      - ./collections:/collections:ro

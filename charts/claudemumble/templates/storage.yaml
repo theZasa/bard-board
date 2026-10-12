@@ -1,0 +1,44 @@
+{{- $fullname := include "claudemumble.fullname" . -}}
+{{- with .Values.persistence.sounds }}
+{{- if not .existingClaim }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-sounds
+  labels:
+    {{- include "claudemumble.labels" $ | nindent 4 }}
+  annotations:
+    # Hochgeladene Sounds überleben ein "helm uninstall".
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .accessMode | quote }}]
+  {{- with .storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+{{- end }}
+{{- with .Values.persistence.collections }}
+{{- if and .enabled (not .existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-collections
+  labels:
+    {{- include "claudemumble.labels" $ | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .accessMode | quote }}]
+  {{- with .storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+{{- end }}
+{{- end }}

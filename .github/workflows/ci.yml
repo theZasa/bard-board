@@ -1,0 +1,279 @@
+name: CI
+
+# Jeder Push und Pull Request wird geprüft. Auf main und bei Tags (v1.2.3) entstehen Image und Chart
+# in der GitHub Container Registry. Nachts wird das Image neu gebaut, damit yt-dlp aktuell bleibt.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  HELM_VERSION: v3.16.4
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: ruff
+        run: |
+          pip install "ruff>=0.12,<1"
+          ruff check .
+      - name: Shell-Skripte
+        run: shellcheck tools/ci/*.sh
+      - name: JavaScript-Syntax
+        run: node --check static/app.js
+
+  test:
+    name: Unit-Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Systempakete
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg libopus0
+      - name: Python-Pakete
+        run: pip install -r requirements.txt -r requirements-discord.txt
+      - name: Tests
+        run: python -m unittest discover -s tests -t . -v
+
+  e2e:
+    name: End-to-End (echter Mumble-Server)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MURMUR_SUPERUSER_PASSWORD: ci-superuser
+      YTDLP_AUTO_UPDATE: "false"
+      TTS_MODEL: ${{ github.workspace }}/.ci/voice.onnx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Systempakete und Mumble-Server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg libopus0 mumble-server
+          # Das Paket startet einen eigenen Dienst auf Port 64738; der Test bringt seinen eigenen mit.
+          sudo systemctl disable --now mumble-server || true
+      - name: Python-Pakete
+        run: pip install -r requirements.txt -r requirements-discord.txt
+      - name: Stimme für die Sprachausgabe
+        uses: actions/cache@v4
+        with:
+          path: .ci
+          key: piper-thorsten-high-v1
+      - name: Stimme laden
+        run: |
+          mkdir -p .ci
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high/de_DE-thorsten-high.onnx
+          [ -f .ci/voice.onnx ] || curl -fsSL -o .ci/voice.onnx "$base"
+          [ -f .ci/voice.onnx.json ] || curl -fsSL -o .ci/voice.onnx.json "$base.json"
+      - name: Test-Sounds und Mumble-Server
+        run: |
+          python tools/make_test_sounds.py "$RUNNER_TEMP/sounds"
+          sh tools/ci/murmur.sh start
+      - name: End-to-End-Test
+        run: >
+          python tools/e2e_test.py
+          --superuser-password "$MURMUR_SUPERUSER_PASSWORD"
+          --sounds "$RUNNER_TEMP/sounds"
+          --restart-cmd "sh tools/ci/murmur.sh restart"
+      - name: Logs bei Fehler
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            /tmp/sb-e2e-*/bot.log
+            /tmp/murmur-ci/murmur.log
+          if-no-files-found: ignore
+
+  helm:
+    name: Helm-Chart prüfen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Lint und Schema-Prüfung
+        run: |
+          helm lint charts/claudemumble -f charts/claudemumble/ci/test-values.yaml --strict
+          for values in charts/claudemumble/ci/test-values.yaml deploy/values.example.yaml; do
+            helm template ci charts/claudemumble -f "$values" \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0
+          done
+      - name: Pflichtangaben werden erzwungen
+        run: |
+          # Ohne Secret-Namen oder ohne Passwort bei öffentlichem Ingress darf das Chart nicht rendern.
+          if helm template ci charts/claudemumble > /dev/null; then
+            echo "::error::Chart rendert ohne mumble.existingSecret"; exit 1
+          fi
+          if helm template ci charts/claudemumble --set mumble.existingSecret=x --set ingress.enabled=true > /dev/null; then
+            echo "::error::Chart rendert einen öffentlichen Ingress ohne Passwort"; exit 1
+          fi
+
+  image:
+    name: Image bauen
+    needs: [lint, test, e2e, helm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unveränderlicher Tag für dieses Image
+        id: tag
+        run: |
+          short=${GITHUB_SHA::7}
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            echo "tag=nightly-$(date -u +%Y%m%d)-$short" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-$short" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@v3
+      - name: Bauen (lokal, zum Testen)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: claudemumble:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image testen
+        run: |
+          docker run --rm claudemumble:ci python -m unittest discover -s tests -t .
+          docker run --rm claudemumble:ci python -c "import discord, davey, nacl; print('Discord-Sprache verfügbar')"
+          # Startet ohne Mumble-Server, Webinterface mit Passwort, /healthz bleibt offen.
+          docker run -d --name smoke -p 8080:8080 -e MUMBLE_HOST=127.0.0.1 -e WEB_PASSWORD=ci -e YTDLP_AUTO_UPDATE=false claudemumble:ci
+          for _ in $(seq 1 30); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 2; done
+          curl -fs http://127.0.0.1:8080/healthz
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u x:ci http://127.0.0.1:8080/)" = 200
+          docker logs smoke
+          docker rm -f smoke
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Image heißt wie das Repository, z. B. ghcr.io/thezasa/dumbleboard
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Anmelden bei GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Hochladen
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+  chart:
+    name: Chart veröffentlichen
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Paketieren und hochladen
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          helm package charts/claudemumble --version "$version" --app-version "$version"
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push "claudemumble-$version.tgz" "oci://ghcr.io/$owner/charts"
+
+  deploy:
+    name: Ausrollen
+    # Nur wenn ein Zugang zum Cluster hinterlegt ist (Secret KUBECONFIG in der Umgebung "production").
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [image]
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zugang vorhanden?
+        id: access
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -z "$KUBECONFIG_DATA" ] || [ ! -f deploy/values.yaml ]; then
+            echo "::notice::Kein Ausrollen: Secret KUBECONFIG oder deploy/values.yaml fehlt."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: azure/setup-helm@v4
+        if: steps.access.outputs.ok == 'true'
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: helm upgrade
+        if: steps.access.outputs.ok == 'true'
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+          NAMESPACE: ${{ vars.K8S_NAMESPACE || 'soundboard' }}
+          RELEASE: ${{ vars.HELM_RELEASE || 'soundboard' }}
+        run: |
+          umask 077
+          printf '%s' "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          image=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          helm upgrade --install "$RELEASE" charts/claudemumble \
+            --namespace "$NAMESPACE" \
+            -f deploy/values.yaml \
+            --set image.repository="$image" \
+            --set image.tag="${{ needs.image.outputs.tag }}" \
+            --wait --timeout 5m
+          rm -f "$KUBECONFIG"

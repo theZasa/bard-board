@@ -1,0 +1,9 @@
+# Zeilenenden fest: Shell-Skripte für Linux (CI, Container), Windows-Skripte mit CRLF.
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.mp3 binary
+*.wav binary
+*.ogg binary

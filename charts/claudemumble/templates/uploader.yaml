@@ -1,0 +1,76 @@
+{{- if .Values.uploader.enabled }}
+{{- $fullname := include "claudemumble.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-dateien
+  labels:
+    {{- include "claudemumble.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dateien
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "dateien") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "claudemumble.selectorLabels" (dict "root" . "bot" "dateien") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 2
+      containers:
+        # Dasselbe Image wie die Bots (bringt tar mit), es läuft nur ein "sleep".
+        - name: dateien
+          image: {{ include "claudemumble.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sleep", "infinity"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          volumeMounts:
+            - name: sounds
+              mountPath: /sounds
+            {{- if .Values.persistence.collections.enabled }}
+            - name: collections
+              mountPath: /collections
+            {{- end }}
+      volumes:
+        - name: sounds
+          persistentVolumeClaim:
+            claimName: {{ include "claudemumble.soundsClaim" . }}
+        {{- if .Values.persistence.collections.enabled }}
+        - name: collections
+          persistentVolumeClaim:
+            claimName: {{ include "claudemumble.collectionsClaim" . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if eq .Values.persistence.sounds.accessMode "ReadWriteOnce" }}
+      # Die Volumes hängen am Knoten der Bots: dort laufen.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ .Release.Name }}
+                  app.kubernetes.io/name: {{ .Chart.Name }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+{{- end }}
