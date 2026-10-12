@@ -1,5 +1,6 @@
 {{- if .Values.uploader.enabled }}
 {{- $fullname := include "bard-board.fullname" . -}}
+{{- $bots := splitList "," (include "bard-board.bots" .) | compact -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,6 +46,11 @@ spec:
             - name: collections
               mountPath: /collections
             {{- end }}
+            # Daten der Bots (Join-Sounds, Kürzel, Favoriten ...); nur beschreiben, solange der Bot gestoppt ist.
+            {{- range $bot := $bots }}
+            - name: data-{{ $bot }}
+              mountPath: /data/{{ $bot }}
+            {{- end }}
       volumes:
         - name: sounds
           persistentVolumeClaim:
@@ -53,6 +59,11 @@ spec:
         - name: collections
           persistentVolumeClaim:
             claimName: {{ include "bard-board.collectionsClaim" . }}
+        {{- end }}
+        {{- range $bot := $bots }}
+        - name: data-{{ $bot }}
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-{{ $bot }}-data
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
