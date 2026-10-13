@@ -297,6 +297,16 @@
         <button class="btn btn-primary" type="submit">Speichern</button>
       </form>
     </section>
+    <section class="settings-section">
+      <h4>YouTube-Cookies</h4>
+      <p class="muted small">Nur nötig, wenn YouTube „Sign in to confirm you’re not a bot“ meldet, typisch für Server im Rechenzentrum. Nimm ein eigenes Google-Konto nur für den Bot: In einem privaten Browserfenster bei YouTube anmelden, die Cookies mit einer Erweiterung wie „Get cookies.txt LOCALLY“ exportieren und das Fenster danach schließen. Die Datei ist ein Zugangsschlüssel zu diesem Konto, sie wird hier nie wieder angezeigt.</p>
+      <p class="small" id="cookies-state"></p>
+      <div class="account-actions">
+        <button class="btn btn-primary" id="cookies-upload" type="button">Cookie-Datei hochladen</button>
+        <input type="file" id="cookies-file" accept=".txt,text/plain" hidden>
+        <button class="btn" id="cookies-delete" type="button">Entfernen</button>
+      </div>
+    </section>
     <datalist id="known-users"></datalist>
     <datalist id="sound-names"></datalist>
   </dialog>

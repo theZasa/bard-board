@@ -19,6 +19,11 @@ _URL = re.compile(r"^https?://", re.IGNORECASE)
 _TIME = re.compile(r"^(?:(\d+):)?(?:(\d+):)?(\d+(?:[.,]\d+)?)$")
 _ERROR_PREFIX = re.compile(r"^(?:ERROR:\s*)?(?:\[[^\]]+\]\s*)?(?:[\w-]+:\s+)?")
 RESOLVE_TIMEOUT = 60.0
+COOKIE_COPY_MAX_AGE = 6 * 3600  # copies handed to yt-dlp subprocesses, removed after this
+BOT_CHECK_HINT = ("YouTube verlangt eine Anmeldung (Schutz vor Bots, typisch für Server im Rechenzentrum). "
+                  "Lade im Webinterface im Regler-Dialog unter „YouTube-Cookies“ eine Cookie-Datei hoch.")
+EXPIRED_COOKIES_HINT = ("YouTube lehnt die hinterlegten Cookies ab (abgelaufen oder abgemeldet). "
+                        "Lade im Webinterface unter „YouTube-Cookies“ eine neue Cookie-Datei hoch.")
 # Errors where another attempt (fresh stream URL, then yt-dlp's own downloader) can help.
 # googlevideo answers 403 for some stream variants and IP or token mismatches.
 _RETRYABLE = re.compile(
@@ -73,12 +78,51 @@ def _clean_error(exc: Exception) -> str:
         return "Das Video ist nicht verfügbar"
     if "sign in to confirm your age" in lowered or "age-restricted" in lowered:
         return "Das Video hat eine Altersbeschränkung"
+    if "confirm you" in lowered and "not a bot" in lowered:
+        return BOT_CHECK_HINT
     if "unsupported url" in lowered:
         return "Dieser Link wird nicht unterstützt"
     text = re.sub(r"\s*\(caused by .*$", "", text)
     if re.search(r"\b403\b", text) and "forbidden" in lowered:
         return f"Zugriff verweigert (HTTP 403): {text[:150]}"
     return text[:200]
+
+
+COOKIES_MAX_BYTES = 1_000_000
+COOKIES_HEADER = "# Netscape HTTP Cookie File"
+# Present only when the export was made while signed in to YouTube; without them the file does not help.
+_LOGIN_COOKIES = {"LOGIN_INFO", "SID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID", "__Secure-3PAPISID"}
+
+
+def validate_cookies(data: bytes) -> str:
+    """Check an uploaded cookies.txt (Netscape format, e.g. from "Get cookies.txt LOCALLY").
+
+    Returns the text to store; raises MediaError with a German reason. The content is never logged.
+    """
+    if len(data) > COOKIES_MAX_BYTES:
+        raise MediaError("Die Datei ist zu groß für eine Cookie-Datei")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise MediaError("Das ist keine Cookie-Datei (keine Textdatei)") from exc
+    youtube = signed_in = False
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for line in lines:
+        cookie = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
+        if not cookie.strip() or cookie.startswith("#"):
+            continue
+        fields = cookie.split("\t")
+        if len(fields) != 7:
+            raise MediaError("Das ist keine Cookie-Datei im Netscape-Format (cookies.txt)")
+        if fields[0].lstrip(".").endswith("youtube.com"):
+            youtube = True
+            signed_in = signed_in or fields[5] in _LOGIN_COOKIES
+    if not youtube:
+        raise MediaError("Die Datei enthält keine Cookies von youtube.com")
+    if not signed_in:
+        raise MediaError("In der Datei fehlen die Anmelde-Cookies: beim Export war niemand bei YouTube angemeldet")
+    body = "\n".join(line for line in lines if not line.startswith(("# Netscape HTTP Cookie File", "# HTTP Cookie File")))
+    return f"{COOKIES_HEADER}\n{body.strip()}\n"
 
 
 def _wants_single_video(url: str) -> bool:
@@ -180,9 +224,54 @@ def _expiry(url: str) -> float:
 class Resolver:
     """Thin async wrapper around yt-dlp (imported lazily, it may have been updated at startup)."""
 
-    def __init__(self, cache_dir: Path, *, max_playlist: int = 100) -> None:
+    def __init__(self, cache_dir: Path, *, max_playlist: int = 100, cookies_file: Path | None = None) -> None:
         self.cache_dir = cache_dir
         self.max_playlist = max_playlist
+        # YouTube cookies (Netscape format) for servers that YouTube asks to sign in; optional.
+        self.cookies_file = cookies_file
+
+    def _cookie_copy(self) -> Path | None:
+        """A private copy of the cookie file for one yt-dlp run.
+
+        yt-dlp writes the cookie jar back when it finishes; parallel runs (lookup, stream, download)
+        would otherwise overwrite each other's version of the one file the person uploaded.
+        """
+        if self.cookies_file is None or not self.cookies_file.is_file():
+            return None
+        folder = self.cache_dir / "cookies"
+        folder.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        for old in folder.glob("*.txt"):
+            try:
+                if now - old.stat().st_mtime > COOKIE_COPY_MAX_AGE:
+                    old.unlink()
+            except OSError:
+                pass
+        copy = folder / f"{os.getpid()}-{time.monotonic_ns()}.txt"
+        shutil.copyfile(self.cookies_file, copy)
+        os.chmod(copy, 0o600)
+        return copy
+
+    def _error(self, exc: Exception) -> MediaError:
+        message = _clean_error(exc)
+        if message == BOT_CHECK_HINT and self.cookies_file is not None and self.cookies_file.is_file():
+            message = EXPIRED_COOKIES_HINT
+        return MediaError(message)
+
+    def _extract(self, target: str, opts: dict) -> dict | None:
+        import yt_dlp
+
+        cookies = self._cookie_copy()
+        if cookies is not None:
+            opts = {**opts, "cookiefile": str(cookies)}
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(target, download=False)
+        except yt_dlp.utils.DownloadError as exc:
+            raise self._error(exc) from exc
+        finally:
+            if cookies is not None:
+                cookies.unlink(missing_ok=True)
 
     def _options(self, **extra) -> dict:
         opts = {
@@ -212,8 +301,6 @@ class Resolver:
         return await self._run(self._lookup_sync, query)
 
     def _lookup_sync(self, query: str) -> Lookup:
-        import yt_dlp
-
         search = not is_url(query)
         target = f"ytsearch1:{query}" if search else query
         opts = self._options(
@@ -221,11 +308,7 @@ class Resolver:
             noplaylist=not search and _wants_single_video(query),
             playlistend=self.max_playlist,
         )
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(target, download=False)
-        except yt_dlp.utils.DownloadError as exc:
-            raise MediaError(_clean_error(exc)) from exc
+        info = self._extract(target, opts)
         if not info:
             raise MediaError("Nichts gefunden")
         if info.get("_type") in ("playlist", "multi_video") or "entries" in info:
@@ -271,13 +354,7 @@ class Resolver:
         return await self._run(self._stream_sync, source)
 
     def _stream_sync(self, source: str) -> Stream:
-        import yt_dlp
-
-        try:
-            with yt_dlp.YoutubeDL(self._options(noplaylist=True)) as ydl:
-                info = ydl.extract_info(source, download=False)
-        except yt_dlp.utils.DownloadError as exc:
-            raise MediaError(_clean_error(exc)) from exc
+        info = self._extract(source, self._options(noplaylist=True))
         if info and info.get("entries"):
             info = next((e for e in info["entries"] if e), None)
         if not info:
@@ -303,10 +380,12 @@ class Resolver:
         It knows YouTube's peculiarities (chunked range requests, tokens, retries) that a plain
         ffmpeg HTTP request does not, so it is the fallback when googlevideo answers 403.
         """
+        cookies = self._cookie_copy()
         return [
             sys.executable, "-m", "yt_dlp", "--quiet", "--no-warnings", "--no-progress", "--no-playlist",
             "--no-part", "--format", FORMAT, "--output", "-", "--socket-timeout", "15",
-            "--retries", "3", "--fragment-retries", "3", "--cache-dir", str(self.cache_dir), "--", source,
+            "--retries", "3", "--fragment-retries", "3", "--cache-dir", str(self.cache_dir),
+            *(["--cookies", str(cookies)] if cookies is not None else []), "--", source,
         ]
 
     @staticmethod

@@ -202,6 +202,11 @@ Die Warteschlange steht in der Seitenleiste, dort lassen sich Titel per Ziehen u
 - Die Warteschlange übersteht einen Neustart, die Musik startet danach aber erst auf Knopfdruck oder mit `/resume`.
 - Bricht ein Stream ab, setzt der Bot an derselben Stelle fort.
 - Lehnt YouTube einen Stream ab (Fehler 403), holt der Bot erst eine frische Stream-Adresse und lädt notfalls über den eigenen Downloader von yt-dlp, der YouTubes Eigenheiten kennt.
+- Auf Servern im Rechenzentrum verlangt YouTube oft eine Anmeldung („Sign in to confirm you’re not a bot“).
+  Dann im Regler-Dialog unter „YouTube-Cookies“ eine Cookie-Datei hochladen.
+  Am besten ein eigenes Google-Konto nur für den Bot nehmen, in einem privaten Browserfenster bei YouTube anmelden, die Cookies mit einer Erweiterung wie „Get cookies.txt LOCALLY“ exportieren und das Fenster danach schließen.
+  Der Bot prüft die Datei, legt sie nur für sich lesbar in `data/youtube-cookies.txt` ab und zeigt ihren Inhalt nie wieder an.
+  Meldet YouTube trotz Cookies weiter den Bot-Schutz, sind sie abgelaufen, dann einfach eine neue Datei hochladen.
 - yt-dlp aktualisiert sich bei jedem Start selbst, weil YouTube regelmäßig Dinge ändert.
   Außerdem sieht der Bot einmal am Tag nach, ob es eine neue Version gibt.
   Dann startet er sich kurz neu, sobald gerade nichts läuft, und ist nach wenigen Sekunden wieder im Kanal.

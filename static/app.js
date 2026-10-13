@@ -1224,7 +1224,39 @@ const findSoundByName = (name) => {
   return [...state.sounds.values()].find((s) => s._foldedName === f || `${fold(s.category)} ${s._foldedName}`.trim() === f);
 };
 
+// YouTube cookies: only whether they are there, never their content.
+async function loadCookies() {
+  const c = await api("GET", "/api/youtube-cookies").catch(() => null);
+  if (!c) return;
+  $("#cookies-state").replaceChildren(
+    c.present
+      ? el("span", { text: `Hinterlegt seit ${new Date(c.since * 1000).toLocaleString("de", { dateStyle: "short", timeStyle: "short" })}.` })
+      : el("span", { class: "muted", text: "Keine hinterlegt." })
+  );
+  $("#cookies-delete").hidden = !c.present;
+  $("#cookies-upload").textContent = c.present ? "Neue Cookie-Datei hochladen" : "Cookie-Datei hochladen";
+}
+$("#cookies-upload").addEventListener("click", () => $("#cookies-file").click());
+$("#cookies-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    await api("PUT", "/api/youtube-cookies", form);
+    toast("YouTube-Cookies hinterlegt", "ok");
+  } catch { /* the reason was shown as a toast */ }
+  loadCookies();
+});
+$("#cookies-delete").addEventListener("click", async () => {
+  if (!confirm("YouTube-Cookies entfernen?")) return;
+  await api("DELETE", "/api/youtube-cookies").catch(() => {});
+  loadCookies();
+});
+
 $("#settings-btn").addEventListener("click", () => {
+  loadCookies();
   renderExtras();
   $("#settings").showModal();
 });
