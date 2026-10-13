@@ -24,7 +24,7 @@ from .config import Config
 from .events import EventHub
 from .extras import Aliases, JoinSounds, RadioStations
 from .library import Library, Sound, fold, safe_category, safe_filename, sound_id
-from .media import MediaError, Resolver, format_time, is_url, make_clip
+from .media import MediaError, Resolver, format_time, is_url, make_clip, validate_cookies
 from .mixer import Mixer, Voice
 from .music import AddResult, MusicPlayer, Track
 from .opus import SAMPLE_RATE
@@ -81,7 +81,8 @@ class Soundboard:
         # Personal login for the web interface, only where it is public (WEB_PASSWORD, see auth.py).
         self.web_login = WebLogin(cfg.data_dir / "anmeldung.json", self.platform.name) if cfg.web_password else None
         self.platform.bind(self)
-        self.resolver = Resolver(cfg.ytdlp_cache_dir, max_playlist=cfg.max_playlist_items)
+        self.resolver = Resolver(cfg.ytdlp_cache_dir, max_playlist=cfg.max_playlist_items,
+                                 cookies_file=cfg.data_dir / "youtube-cookies.txt")
         self.music = MusicPlayer(
             self.resolver,
             state_file=cfg.music_file,
@@ -682,6 +683,35 @@ class Soundboard:
             self.log_activity(removed_by, source, f"Kürzel /{name.casefold()} entfernt")
             self.publish_extras()
         return removed
+
+    # ------------------------------------------------------------ YouTube cookies
+
+    def youtube_cookies_json(self) -> dict:
+        """Only whether and since when: the content never leaves the bot again."""
+        path = self.resolver.cookies_file
+        try:
+            return {"present": True, "since": path.stat().st_mtime}
+        except OSError:
+            return {"present": False, "since": None}
+
+    def set_youtube_cookies(self, data: bytes, *, set_by: str, source: str) -> None:
+        text = validate_cookies(data)  # raises MediaError with the reason
+        path = self.resolver.cookies_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            os.chmod(tmp, 0o600)
+            f.write(text)
+        os.replace(tmp, path)
+        self.log_activity(set_by, source, "hat YouTube-Cookies hinterlegt")
+
+    def remove_youtube_cookies(self, *, removed_by: str, source: str) -> bool:
+        try:
+            self.resolver.cookies_file.unlink()
+        except FileNotFoundError:
+            return False
+        self.log_activity(removed_by, source, "hat die YouTube-Cookies entfernt")
+        return True
 
     def _check_audio(self) -> None:
         if not self.platform.ready:

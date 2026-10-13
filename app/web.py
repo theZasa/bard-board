@@ -24,7 +24,7 @@ from .audio import DecodeError, decode_file
 from .auth import CODE_TTL, SESSION_COOKIE, LoginError, LoginGate, device_label
 from .core import PlayError, Soundboard
 from .library import AUDIO_EXTENSIONS
-from .media import MediaError, format_time, parse_time
+from .media import COOKIES_MAX_BYTES, MediaError, format_time, parse_time
 
 log = logging.getLogger("web")
 
@@ -454,6 +454,27 @@ def create_app(board: Soundboard) -> Starlette:
     async def http_error(_: Request, exc: HTTPException) -> Response:
         return _error(exc.status_code, exc.detail)
 
+    # ------------------------------------------------------------- YouTube cookies
+
+    async def youtube_cookies(_: Request) -> Response:
+        return JSONResponse(board.youtube_cookies_json())
+
+    async def youtube_cookies_set(request: Request) -> Response:
+        async with request.form(max_files=1, max_fields=2) as form:
+            upload_file = form.get("file")
+            if not isinstance(upload_file, UploadFile):
+                return _error(400, "Keine Datei empfangen")
+            data = await upload_file.read(COOKIES_MAX_BYTES + 1)
+        try:
+            board.set_youtube_cookies(data, set_by=who(request), source="web")
+        except MediaError as exc:
+            return _error(422, str(exc))
+        return JSONResponse(board.youtube_cookies_json())
+
+    async def youtube_cookies_delete(request: Request) -> Response:
+        board.remove_youtube_cookies(removed_by=who(request), source="web")
+        return JSONResponse(board.youtube_cookies_json())
+
     # ------------------------------------------------------------- login (only with WEB_PASSWORD)
 
     login = board.web_login
@@ -616,6 +637,9 @@ def create_app(board: Soundboard) -> Starlette:
         Route("/api/collections/{cid}/items/{iid}/play", collection_play, methods=["POST"]),
         Route("/api/collections/{cid}/items/{iid}/audio", collection_audio),
         Route("/api/collections/{cid}/items/{iid}/board", collection_to_board, methods=["POST"]),
+        Route("/api/youtube-cookies", youtube_cookies),
+        Route("/api/youtube-cookies", youtube_cookies_set, methods=["PUT"]),
+        Route("/api/youtube-cookies", youtube_cookies_delete, methods=["DELETE"]),
         *auth_routes,
         WebSocketRoute("/ws", websocket),
         Mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static"),
