@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+from . import version
 from .library import Sound, fold
 from .media import MediaError, format_time, is_url, parse_time
 from .platforms.base import IncomingText
@@ -380,7 +381,8 @@ class CommandHandler:
                 rows.append(f"<tr><td><code>{p}{cmd.names[0]}{usage}</code>&nbsp;&nbsp;</td>"
                             f"<td>{text}{extra}{lock}</td></tr>")
         others = [q for q in self.cfg.command_prefixes if q != prefix]
-        hint = f" {muted}· statt {p} geht auch {esc(others[0])}</font>" if others else ""
+        hint = f" {muted}· statt {p} geht auch {esc(others[0])}" if others else f" {muted}"
+        hint += f" · {esc(version.describe())}</font>"
         return f"<b>Soundboard-Befehle</b>{hint}<table cellspacing=\"0\" cellpadding=\"1\">{''.join(rows)}</table>"
 
     async def cmd_help(self, ctx: Context) -> None:
@@ -399,7 +401,8 @@ class CommandHandler:
             lines = [f"<b>{title}</b>: " + " · ".join(f"<code>{p}{c.names[0]}</code>" for c in self.commands
                                                      if c.group == group)
                      for group, title in self.HELP_GROUPS if group in groups]
-            text = "<br>".join(lines) + f"<br>Details: <code>{p}help musik</code>, <code>{p}help extras</code> …"
+            text = ("<br>".join(lines) + f"<br>Details: <code>{p}help musik</code>, <code>{p}help extras</code> …"
+                    f"<br>{esc(version.describe())}")
         self.reply(ctx, text)
 
     # -------------------------------------------------------------- collections

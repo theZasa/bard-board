@@ -10,7 +10,7 @@ import sys
 
 import uvicorn
 
-from . import __version__
+from . import version
 from .certs import ensure_certificate
 from .config import Config, ConfigError
 from .core import Soundboard
@@ -38,7 +38,7 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     log = logging.getLogger("main")
-    log.info("bard-board %s für %s (%s)", __version__, cfg.platform.capitalize(), opus_version())
+    log.info("bard-board, %s, für %s (%s)", version.describe(), cfg.platform.capitalize(), opus_version())
     if cfg.ytdlp_auto_update:
         update_ytdlp()
     log.info("yt-dlp %s", Resolver.version())

@@ -19,7 +19,12 @@ x-common: &common
 services:
   soundboard:
     <<: *common
-    build: .
+    build:
+      context: .
+      # Commit und Datum fuer die Versionsanzeige, setzt start.bat (setup.ps1)
+      args:
+        BARD_BOARD_REVISION: ${BARD_BOARD_REVISION:-}
+        BARD_BOARD_DATE: ${BARD_BOARD_DATE:-}
     container_name: bard-board-mumble
     env_file:
       # Unkritische Einstellungen (liegt im Projektordner)

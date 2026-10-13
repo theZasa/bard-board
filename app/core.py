@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import updater
+from . import updater, version
 from .audio import AudioCache, DecodeError
 from .catalog import Collection, Collections, Item
 from .config import Config
@@ -935,6 +935,7 @@ class Soundboard:
             "clip_category": self.cfg.clip_category,
             "extras": self.extras_json(),
             "collections": self.catalog.to_json(),
+            "version": version.describe(),
         }
 
     def _peer_json(self) -> dict | None:
