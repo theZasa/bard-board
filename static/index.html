@@ -258,6 +258,15 @@
       <h3>Join-Sounds, Kürzel und Sender</h3>
       <button class="btn btn-icon btn-sm" id="settings-close" type="button" aria-label="Schließen"><svg class="icon"><use href="#i-close"/></svg></button>
     </div>
+    <section class="settings-section" id="account-section" hidden>
+      <h4>Anmeldung</h4>
+      <p class="muted small" id="account-info"></p>
+      <ul class="kv" id="passkey-list"></ul>
+      <div class="account-actions">
+        <button class="btn btn-primary" id="passkey-add" type="button">Passkey für dieses Gerät anlegen</button>
+        <button class="btn" id="logout-btn" type="button">Abmelden</button>
+      </div>
+    </section>
     <section class="settings-section">
       <h4>Join-Sounds</h4>
       <p class="muted small">Spielt, wenn jemand den Kanal des Bots betritt (höchstens alle 10 Minuten pro Person). Im Chat: <code>/joinsound name</code>.</p>
@@ -306,6 +315,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <audio id="preview" preload="none"></audio>
 
+  <script src="passkey.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

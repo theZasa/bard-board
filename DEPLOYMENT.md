@@ -15,7 +15,7 @@ Das Helm-Chart unter `charts/bard-board` startet bis zu zwei Bots aus demselben 
 | Sammlungen | Anno, Dota, WoW …, für die Bots nur lesend | ein Volume (20 GiB oder mehr) |
 
 Zugangsdaten stehen nie im Chart oder im Repository, sondern in Kubernetes-Secrets.
-Das Webinterface ist im Internet nur mit Passwort erreichbar; ohne Passwort-Secret verweigert das Chart einen Ingress.
+Im Internet braucht das Webinterface eine Anmeldung (Code über den Chat, danach Passkey, siehe README); ohne das Secret `web-passwort` verweigert das Chart einen Ingress.
 Volumes mit Daten bleiben bei `helm uninstall` erhalten.
 
 ## Was der Cluster-Betreiber bereitstellen muss
@@ -57,7 +57,7 @@ kubectl -n soundboard create secret generic mumble-cert \
   --from-file=cert.pem=data/cert.pem --from-file=key.pem=data/key.pem
 ```
 
-Discord-Token (wie in `discord.env`) und das Passwort für das Webinterface:
+Discord-Token (wie in `discord.env`) und das Secret, das die Anmeldung im Webinterface einschaltet (der Wert ist beliebig, angemeldet wird über den Chat):
 
 ```bash
 kubectl -n soundboard create secret generic discord-zugang --from-literal=DISCORD_TOKEN='...'

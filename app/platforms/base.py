@@ -46,6 +46,10 @@ class IncomingText:
     is_admin: bool = False
     sender_channel: ChannelId | None = None  # where the sender is (for /come)
     source: str = "mumble"  # for the activity log
+    # Who wrote, as stable as the platform allows (Mumble user ID when registered, Discord user ID).
+    account: str = ""
+    # Answer only the sender (e.g. the result of /login); None = reply is private already or impossible.
+    reply_private: Callable[[str], Awaitable[None] | None] | None = None
 
 
 class AudioSink(Protocol):

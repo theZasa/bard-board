@@ -105,6 +105,8 @@ class CommandHandler:
             Command(("alias",), "[name] [ziel]", "Kürzel anzeigen oder anlegen, z. B. <code>{p}alias lr leeroy</code>",
                     self.cmd_alias, group=x),
             Command(("unalias",), "&lt;name&gt;", "Kürzel löschen", self.cmd_unalias, group=x),
+            Command(("login", "anmelden"), "&lt;code&gt;", "Webinterface freischalten (Code von der Anmeldeseite)",
+                    self.cmd_login, group=x),
         ]
         self.refresh_collections()
 
@@ -143,7 +145,9 @@ class CommandHandler:
         if self.cfg.is_blocked(msg.sender):
             return
         ctx = Context(msg, msg.sender, args, prefix)
-        log.info("%s: %s%s %s", msg.sender, prefix, name, args)
+        # A login code does not belong in the log, even though it is short-lived and single-use.
+        shown = "***" if name.casefold() in ("login", "anmelden") and args else args
+        log.info("%s: %s%s %s", msg.sender, prefix, name, shown)
         await self._dispatch(ctx, name, args)
 
     async def _dispatch(self, ctx: Context, name: str, args: str, depth: int = 0) -> None:
@@ -185,8 +189,9 @@ class CommandHandler:
 
     # ---------------------------------------------------------------- replies
 
-    def reply(self, ctx: Context, html_text: str) -> None:
-        result = ctx.msg.reply(html_text)
+    def reply(self, ctx: Context, html_text: str, *, private: bool = False) -> None:
+        send = (ctx.msg.reply_private or ctx.msg.reply) if private else ctx.msg.reply
+        result = send(html_text)
         if inspect.isawaitable(result):
             task = asyncio.ensure_future(result)
             self._pending.add(task)
@@ -804,3 +809,26 @@ class CommandHandler:
             return
         self.board.remove_alias(name, removed_by=ctx.sender, source=ctx.source)
         self.reply(ctx, f"Kürzel <code>{esc(ctx.prefix)}{esc(name)}</code> gelöscht.")
+
+    async def cmd_login(self, ctx: Context) -> None:
+        """Device-flow login: the code from the web login page unlocks that browser for the sender."""
+        from .auth import LoginError
+
+        login = self.board.web_login
+        if login is None:
+            self.reply(ctx, "Dieses Webinterface braucht keine Anmeldung.", private=True)
+            return
+        if not ctx.args.strip():
+            self.reply(ctx, f"Schreib den Code von der Anmeldeseite dazu, z. B. <code>{esc(ctx.prefix)}login "
+                            "K7Q2-M9XD</code>.", private=True)
+            return
+        account = ctx.msg.account or f"{ctx.source}-name:{ctx.sender.casefold()}"
+        try:
+            login.confirm_code(ctx.args, account, ctx.sender)
+        except LoginError as exc:
+            self.reply(ctx, esc(str(exc)), private=True)
+            return
+        self.board.log_activity(ctx.sender, ctx.source, "hat sich im Webinterface angemeldet")
+        self.reply(ctx, f"Webinterface freigegeben für <b>{esc(ctx.sender)}</b>. "
+                        "Leg dort am besten gleich einen Passkey an, dann geht es nächstes Mal ohne Code.",
+                   private=True)

@@ -256,14 +256,57 @@ async def wait_for(predicate, timeout: float = 5.0, interval: float = 0.05) -> b
     return bool(predicate())
 
 
+# Session cookie of the web login (see login_via_chat); sent with every request once set.
+WEB_COOKIE: dict[str, str] = {}
+
+
+def web_request(url: str, data: bytes | None = None, method: str = "GET") -> urllib.request.Request:
+    headers = {"Content-Type": "application/json"}
+    if WEB_COOKIE:
+        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in WEB_COOKIE.items())
+    return urllib.request.Request(url, data=data, method=method, headers=headers)
+
+
 def http(method: str, url: str, body: dict | None = None) -> tuple[int, dict]:
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+    req = web_request(url, data, method)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
+            for header in resp.headers.get_all("Set-Cookie") or []:
+                name, _, rest = header.partition("=")
+                WEB_COOKIE[name.strip()] = rest.split(";", 1)[0]
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read() or b"{}")
+
+
+async def login_via_chat(args: argparse.Namespace, web: str) -> bool:
+    """Like a person: the login page shows a code, a Mumble user sends it to the bot privately."""
+    status, _ = http("GET", f"{web}/api/state")
+    check("Webinterface ist ohne Anmeldung gesperrt", status == 401, f"HTTP {status}")
+    status, started = http("POST", f"{web}/auth/code")
+    check("Anmeldeseite bekommt einen Code", status == 200 and len(started.get("code", "")) == 9, str(started))
+    client, rec, task = await connect(args.host, args.port, "Anmelder")
+    try:
+        bot = await wait_for(lambda: client.find_user(BOT_NAME), 5)
+        check("Bot ist für die Anmeldung erreichbar", bool(bot))
+        if not bot:
+            return False
+        client.send_text(f"/login {started['code']}", session=client.find_user(BOT_NAME).session)
+        answered = await wait_for(lambda: any("freigegeben" in strip_html(t.message) for t in rec.texts), 5)
+        private = all(t.is_private for t in rec.texts)
+        check("Bot bestätigt /login per Privatnachricht", answered and private,
+              str([strip_html(t.message) for t in rec.texts])[:120])
+        status, polled = http("POST", f"{web}/auth/code/poll", {"flow": started.get("flow", "")})
+        check("Browser ist danach angemeldet", polled.get("state") == "ok" and "bard_session" in WEB_COOKIE,
+              str(polled))
+        status, me = http("GET", f"{web}/auth/status")
+        check("Webinterface kennt den Namen aus Mumble", me.get("user") == "Anmelder" and not me.get("passkey"),
+              str(me))
+        return http("GET", f"{web}/api/state")[0] == 200
+    finally:
+        await client.close()
+        task.cancel()
 
 
 async def connect(host: str, port: int, name: str, password: str = "") -> tuple[MumbleClient, Recorder, asyncio.Task]:
@@ -333,6 +376,8 @@ async def run(args: argparse.Namespace) -> int:
         MUSIC_DEFAULT_VOLUME="100",
         DATA_DIR=str(data_dir),
         WEB_HOST="127.0.0.1",
+        # Public like in the cluster: the web interface needs a login, done via the Mumble chat below.
+        WEB_PASSWORD="e2e",
         WEB_PORT=str(args.web_port),
         COMMAND_COOLDOWN="0",
         # Allocate via mmap so native pointers live above 4 GiB like in the Docker image.
@@ -365,9 +410,11 @@ async def run(args: argparse.Namespace) -> int:
 
 async def scenario(args: argparse.Namespace, web: str, bot: subprocess.Popen) -> int:
     print("Bot startet ...")
-    ok = await wait_for(lambda: _state(web).get("status", {}).get("connected", False), 20, 0.3)
+    ok = await wait_for(lambda: _health(web).get("connected", False), 20, 0.3)
     check("Bot verbindet sich", ok)
     if not ok:
+        return 1
+    if not await login_via_chat(args, web):
         return 1
     in_afk = await wait_for(lambda: _state(web)["status"]["channel"] == "AFK", 5, 0.2)
     check("Ohne Follow-User online: Bot geht in MUMBLE_CHANNEL", in_afk, str(_state(web)["status"]["channel"]))
@@ -492,6 +539,8 @@ async def scenario(args: argparse.Namespace, web: str, bot: subprocess.Popen) ->
         act = _state(web)["activity"]
         check("Aktivitaetslog enthaelt Mumble- und Web-Eintraege",
               any(a["source"] == "mumble" and a["user"] == "Zasa" for a in act) and any(a["source"] == "web" for a in act))
+        check("Web-Eintraege tragen den angemeldeten Namen statt „Web“",
+              all(a["user"] == "Anmelder" for a in act if a["source"] == "web"), str([a["user"] for a in act]))
 
         # Unfollow and come
         rec.reset()
@@ -955,7 +1004,7 @@ async def collections_scenario(args, web, zasa, rec, bot_session, say, reply) ->
 
     blake = by_text["Kennste nicht? Kein Witz."]
     await played(lambda: http("POST", f"{base}/items/{blake['id']}/play"), "Web: Zeile im Kanal abspielen (760 Hz)", 760)
-    req = urllib.request.urlopen(f"{base}/items/{blake['id']}/audio", timeout=5)
+    req = urllib.request.urlopen(web_request(f"{base}/items/{blake['id']}/audio"), timeout=5)
     check("Web: Zeile lokal vorhören (Audiodatei)", req.status == 200 and len(req.read()) > 1000)
 
     await played(lambda: say("/anno schiff"), "/anno schiff spielt die passende Zeile (620 Hz)", 620)
@@ -1007,6 +1056,13 @@ async def collections_scenario(args, web, zasa, rec, bot_session, say, reply) ->
     say("/dota keen worthy")
     text = await reply("Keen", 5)
     check("Zweitaufnahmen tragen den sauberen Text", "„A Keen worthy to fight“" in text and "(2 Treffer)" in text, text[:100])
+
+
+def _health(web: str) -> dict:
+    try:
+        return http("GET", f"{web}/healthz")[1]
+    except OSError:
+        return {}
 
 
 def _state(web: str) -> dict:

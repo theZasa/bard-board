@@ -175,12 +175,17 @@ jobs:
           docker run --rm bard-board:ci python -c "import discord, davey, nacl; print('Discord-Sprache verfügbar')"
           # Die Versionsanzeige (Webinterface und /help) nennt genau diesen Commit.
           docker run --rm bard-board:ci python -c "from app import version; print(version.describe())" | tee /dev/stderr | grep -q "${GITHUB_SHA::7}"
-          # Startet ohne Mumble-Server, Webinterface mit Passwort, /healthz bleibt offen.
+          # Startet ohne Mumble-Server, öffentlich (WEB_PASSWORD): nur Anmeldeseite und /healthz sind offen,
+          # das alte gemeinsame Passwort gilt nicht mehr.
           docker run -d --name smoke -p 8080:8080 -e MUMBLE_HOST=127.0.0.1 -e WEB_PASSWORD=ci -e YTDLP_AUTO_UPDATE=false bard-board:ci
           for _ in $(seq 1 30); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 2; done
           curl -fs http://127.0.0.1:8080/healthz
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 401
-          test "$(curl -s -o /dev/null -w '%{http_code}' -u x:ci http://127.0.0.1:8080/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 303
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/state)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u x:ci http://127.0.0.1:8080/api/state)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/login.html)" = 200
+          curl -fs http://127.0.0.1:8080/auth/status | grep -q '"enabled":true'
+          curl -fs -X POST http://127.0.0.1:8080/auth/code | grep -q '"code"'
           docker logs smoke
           docker rm -f smoke
       - name: Tags

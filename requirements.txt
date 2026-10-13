@@ -1,12 +1,14 @@
 # Tested with: starlette 1.6, uvicorn 0.53, websockets 17, python-multipart 0.0.32,
-# numpy 2.5, protobuf 7.36, cryptography 50, yt-dlp 2026.08, piper 1.8 on Python 3.13.
+# numpy 2.5, protobuf 7.36, cryptography 50, webauthn 3.0, yt-dlp 2026.08, piper 1.8 on Python 3.13.
 starlette>=1.0,<2
 uvicorn>=0.35,<1
 websockets>=15
 python-multipart>=0.0.20
 numpy>=2.1,<3
 protobuf>=6.31.1,<8
-cryptography>=44
+cryptography>=49
+# Passkeys for the web login (WebAuthn checks, see app/auth.py).
+webauthn>=3,<4
 # [default] includes yt-dlp-ejs, needed together with Deno for YouTube.
 yt-dlp[default]>=2025.11.12
 # Offline text-to-speech (the voice model is downloaded in the Dockerfile).

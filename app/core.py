@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import updater, version
 from .audio import AudioCache, DecodeError
+from .auth import WebLogin
 from .catalog import Collection, Collections, Item
 from .config import Config
 from .events import EventHub
@@ -77,6 +78,8 @@ class Soundboard:
         )
         self.settings = self._load_settings()
         self.platform = make_platform(cfg)
+        # Personal login for the web interface, only where it is public (WEB_PASSWORD, see auth.py).
+        self.web_login = WebLogin(cfg.data_dir / "anmeldung.json", self.platform.name) if cfg.web_password else None
         self.platform.bind(self)
         self.resolver = Resolver(cfg.ytdlp_cache_dir, max_playlist=cfg.max_playlist_items)
         self.music = MusicPlayer(

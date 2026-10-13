@@ -153,7 +153,26 @@ Gelöschte Sounds landen in `data/papierkorb` und können von dort zurückkopier
 - In der Seitenleiste: laufende Sounds einzeln stoppen, Kanal wechseln, Folgen ein- und ausschalten, Benutzer im Kanal, Aktivitätsverlauf.
 
 Das Webinterface ist nur auf deinem PC erreichbar (Port an `127.0.0.1` gebunden).
-Läuft es auf einem Server, schützt die Einstellung `WEB_PASSWORD` es mit einem Passwort (beliebiger Benutzername), siehe [DEPLOYMENT.md](DEPLOYMENT.md).
+Läuft es auf einem Server, schaltet die Einstellung `WEB_PASSWORD` eine persönliche Anmeldung ein, siehe [Anmeldung im Webinterface](#anmeldung-im-webinterface).
+
+## Anmeldung im Webinterface
+
+Lokal ist das Webinterface offen.
+Ist `WEB_PASSWORD` gesetzt (im Kubernetes-Cluster immer), meldet sich jede Person selbst an, ähnlich wie beim Fernseher, der einen Code zum Bestätigen auf dem Handy zeigt:
+
+1. Die Anmeldeseite zeigt einen Code, z. B. `K7Q2-M9XD`, gültig 5 Minuten.
+2. Den Code dem Bot schicken: in Mumble `/login K7Q2-M9XD` als Privatnachricht oder in seinen Kanal, in Discord als Direktnachricht oder mit dem Slash-Befehl `/login`.
+3. Der Bot antwortet privat, und die Seite ist angemeldet.
+4. Danach bietet sie einen Passkey an (Fingerabdruck, Gesichtserkennung oder PIN).
+   Mit Passkey bleibt man 30 Tage angemeldet, und beim nächsten Mal fragt die Seite den Passkey von selbst ab, ganz ohne Code.
+   Ohne Passkey gilt die Anmeldung nur bis Mitternacht.
+
+Anmelden darf sich jeder, der auf dem Mumble- bzw. Discord-Server ist.
+Registrierte Mumble-Benutzer erkennt der Bot sicher an ihrer Benutzer-ID, unregistrierte nur am Namen.
+Im Aktivitätsverlauf steht der Name der Person statt „Web“.
+Passkeys verwalten und abmelden geht im Regler-Dialog oben rechts unter „Anmeldung“.
+Das Passwort aus `WEB_PASSWORD` selbst wird nicht mehr angenommen, es schaltet nur die Anmeldung ein.
+Passkeys funktionieren nur unter einer Adresse mit Namen (z. B. `https://soundboard.example.org` oder `http://localhost:8080`), nicht unter einer IP-Adresse.
 
 ## Betrieb auf einem Server (Kubernetes)
 
@@ -306,6 +325,7 @@ Die Zeilen werden beim Abspielen dekodiert und nur im Arbeitsspeicher zwischenge
 | `/joinsound @name sound` | Join-Sound für jemand anderen setzen |
 | `/alias [name] [ziel]` | Kürzel auflisten, anzeigen oder anlegen |
 | `/unalias name` | Kürzel löschen |
+| `/login code` | Webinterface freischalten, Code von der Anmeldeseite (nur wenn eine Anmeldung nötig ist) |
 | `/anno [suche]` | Zufällige Zeile aus der Sammlung „Anno 1800“, passend zur Suche |
 | `/anno @name [suche]` | Zufällige Zeile eines bestimmten Sprechers |
 
