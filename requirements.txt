@@ -1,7 +1,7 @@
 # Tested with: starlette 1.6, uvicorn 0.53, websockets 17, python-multipart 0.0.32,
 # numpy 2.5, protobuf 7.36, cryptography 50, webauthn 3.0, yt-dlp 2026.08, piper 1.8 on Python 3.13.
 starlette>=1.0,<2
-uvicorn>=0.35,<1
+uvicorn>=0.54.0,<1
 websockets>=15
 python-multipart>=0.0.20
 numpy>=2.1,<3
