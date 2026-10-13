@@ -33,6 +33,13 @@ def strip_html(message: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def mumble_account(user_id: int | None, name: str) -> str:
+    """Registered users keep their ID (safe, survives renames); others are known only by name."""
+    if user_id is not None and user_id >= 0:
+        return f"mumble:{user_id}"
+    return f"mumble-name:{name.casefold()}"
+
+
 def _user(u: User) -> PlatformUser:
     return PlatformUser(id=str(u.session), name=u.name, channel_id=str(u.channel_id),
                         muted=u.self_mute or u.mute, deaf=u.self_deaf or u.deaf)
@@ -229,6 +236,8 @@ class MumblePlatform:
             is_admin=self.cfg.is_admin(sender),
             sender_channel=str(actor.channel_id) if actor else None,
             source="mumble",
+            account=mumble_account(actor.user_id if actor else None, sender),
+            reply_private=None if msg.is_private else (lambda text: reply(text, private=True)),
         ))
 
     async def on_user_changed(self, user: User, old: User | None) -> None:

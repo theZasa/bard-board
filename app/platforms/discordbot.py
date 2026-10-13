@@ -722,6 +722,14 @@ class DiscordPlatform:
         def reply(html_text: str) -> Any:
             return self._send(channel, html_text, reference=message)
 
+        async def reply_private(html_text: str) -> None:
+            try:
+                dm = member.dm_channel or await member.create_dm()
+            except discord.HTTPException as exc:
+                log.warning("Direktnachricht nicht möglich: %s", exc)
+                return
+            await self._send(dm, html_text)
+
         await self.board.on_text(IncomingText(
             sender=member.display_name,
             sender_id=str(member.id),
@@ -732,6 +740,8 @@ class DiscordPlatform:
             is_admin=self.is_admin(member),
             sender_channel=str(voice.channel.id) if voice is not None and voice.channel is not None else None,
             source="discord",
+            account=f"discord:{member.id}",
+            reply_private=None if private else reply_private,
         ))
 
     # ------------------------------------------------------- slash commands
@@ -835,6 +845,7 @@ class DiscordPlatform:
             is_admin=self.is_admin(member),
             sender_channel=str(voice.channel.id) if voice is not None and voice.channel is not None else None,
             source="discord",
+            account=f"discord:{member.id}",
         )
         try:
             await self.board.commands.run(msg, "/", name, args.strip())

@@ -39,6 +39,9 @@ function toast(message, kind = "") {
   setTimeout(() => node.remove(), kind === "err" ? 6000 : 3000);
 }
 
+// Login state of this browser (auth/status); only "enabled" where the interface is public.
+let auth = { enabled: false };
+
 async function api(method, path, body) {
   const opts = { method, headers: {} };
   if (body instanceof FormData) opts.body = body;
@@ -55,6 +58,10 @@ async function api(method, path, body) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status === 401 && auth.enabled) {
+      location.href = "login.html"; // session ended (e.g. midnight without a passkey)
+      throw new Error("login");
+    }
     if (data.error) toast(data.error, "err");
     const err = new Error(data.error || res.statusText);
     err.data = data;
@@ -1696,12 +1703,92 @@ function connect() {
     handlers[msg.type]?.(msg.data);
   };
   ws.onclose = () => {
+    if (auth.enabled) loadAccount(); // a closed socket can mean the session ended
     state.status = state.status ? { ...state.status, connected: false, last_error: "Webinterface hat die Verbindung zum Bot verloren" } : null;
     renderStatus();
     setPlaying([]);
     setTimeout(connect, Math.min(10000, 500 * 2 ** retry++));
   };
 }
+// ------------------------------------------------------- login (only where the interface is public)
+
+const fmtDay = (ts) => new Date(ts * 1000).toLocaleDateString("de", { day: "numeric", month: "numeric", year: "numeric" });
+
+async function loadAccount() {
+  try {
+    auth = await fetch("auth/status", { cache: "no-store" }).then((r) => r.json());
+  } catch {
+    return;
+  }
+  if (!auth.enabled) return;
+  if (!auth.user) {
+    location.href = "login.html";
+    return;
+  }
+  $("#account-section").hidden = false;
+  $("#account-info").replaceChildren(
+    "Angemeldet als ",
+    el("b", { text: auth.user }),
+    ...(auth.passkey
+      ? [` mit Passkey, bis ${fmtDay(auth.expires)}.`]
+      : [" ", el("span", { class: "account-temp", text: "nur bis Mitternacht" }), ". Mit einem Passkey bleibst du 30 Tage angemeldet und brauchst keinen Code mehr."])
+  );
+  $("#passkey-add").hidden = !passkey.supported();
+  $("#passkey-add").classList.toggle("btn-primary", !auth.passkey);
+  const { passkeys = [] } = await api("GET", "auth/passkeys").catch(() => ({}));
+  $("#passkey-list").replaceChildren(
+    ...(passkeys.length
+      ? passkeys.map((p) =>
+          el(
+            "li",
+            { class: "passkey-row" },
+            el(
+              "span",
+              { class: "v", title: p.label },
+              el("b", { text: p.label }),
+              el("span", { class: "by", text: ` · angelegt ${fmtDay(p.created)}${p.last_used ? `, zuletzt ${fmtDay(p.last_used)}` : ""}` })
+            ),
+            el(
+              "button",
+              {
+                class: "btn btn-icon btn-sm",
+                type: "button",
+                title: "Löschen",
+                "aria-label": `Passkey ${p.label} löschen`,
+                onclick: async () => {
+                  if (!confirm(`Passkey „${p.label}“ löschen? Auf diesem Gerät meldest du dich dann wieder per Code an.`)) return;
+                  await api("DELETE", `auth/passkeys/${encodeURIComponent(p.id)}`).catch(() => {});
+                  loadAccount();
+                },
+              },
+              icon("close")
+            )
+          )
+        )
+      : [el("li", {}, el("span", { class: "empty", text: "Noch kein Passkey." }))])
+  );
+}
+
+$("#passkey-add").addEventListener("click", async () => {
+  try {
+    await passkey.register();
+    toast("Passkey angelegt, du bleibst 30 Tage angemeldet", "ok");
+  } catch (err) {
+    if (!["NotAllowedError", "AbortError"].includes(err?.name)) toast(err.message || "Passkey konnte nicht angelegt werden", "err");
+  }
+  loadAccount();
+});
+$("#logout-btn").addEventListener("click", async () => {
+  await fetch("auth/logout", { method: "POST" }).catch(() => {});
+  try { sessionStorage.setItem("bard-logged-out", "1"); } catch { /* private mode */ }
+  location.href = "login.html";
+});
+
 setInterval(() => ws?.readyState === WebSocket.OPEN && ws.send("ping"), 25000);
 setInterval(checkPeer, 30000);
 connect();
+loadAccount().then(() => {
+  if (auth.enabled && auth.user && !auth.passkey && passkey.supported()) {
+    toast("Du bist nur bis Mitternacht angemeldet. Oben rechts im Regler-Dialog kannst du einen Passkey anlegen.");
+  }
+});
