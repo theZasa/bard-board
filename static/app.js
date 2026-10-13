@@ -523,6 +523,7 @@ function renderHelp() {
     ...(state.status?.platform === "discord" ? [["/sb", "auch als Slash-Befehl"]] : []),
   ];
   $("#help").replaceChildren(...items.flatMap(([c, t], i) => [i ? " · " : "", el("code", { text: c }), ` ${t}`]));
+  $("#version").textContent = state.version ?? "";
 }
 
 // ------------------------------------------------------------------ actions
@@ -1629,6 +1630,7 @@ const handlers = {
     state.volume = data.volume;
     state.activity = data.activity;
     state.prefix = data.prefix;
+    state.version = data.version;
     const peerChanged = JSON.stringify(data.peer ?? null) !== JSON.stringify(state.peer ?? null);
     state.peer = data.peer ?? null;
     if (peerChanged) {

@@ -562,6 +562,7 @@ kbd {
 
 .help code { font: 12px var(--mono); color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; white-space: nowrap; }
 .help { line-height: 2; margin: 0; }
+.version { margin: 10px 0 0; font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------------------ player */
 

@@ -56,4 +56,11 @@ VOLUME ["/sounds", "/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4)"
 
+# Which commit this image was built from, shown in the web interface and in /help.
+# Last on purpose: a new commit only rebuilds this metadata layer.
+ARG BARD_BOARD_REVISION=""
+ARG BARD_BOARD_DATE=""
+ENV BARD_BOARD_REVISION=$BARD_BOARD_REVISION \
+    BARD_BOARD_DATE=$BARD_BOARD_DATE
+
 CMD ["python", "-m", "app.main"]

@@ -158,11 +158,10 @@ Für ein neues yt-dlp braucht es kein neues Image.
 Der Bot aktualisiert es beim Start und sieht täglich nach; gibt es eine neue Version, startet er sich kurz selbst neu, sobald nichts läuft.
 Kubernetes merkt davon nichts (kein Pod-Neustart), im Log steht „Neues yt-dlp …“.
 
-Automatisch ausrollen ist optional.
-Dafür im Repository unter Settings → Environments eine Umgebung `production` anlegen, darin ein Secret `KUBECONFIG` mit dem Zugang zum Namespace hinterlegen und `deploy/values.yaml` committen.
-Dann rollt jeder erfolgreiche Build von `main` per `helm upgrade` aus.
-Ohne dieses Secret bleibt es beim Bauen; ausgerollt wird dann von Hand mit dem Befehl aus Schritt 2.
-Namespace und Release-Name lassen sich über die Variablen `K8S_NAMESPACE` und `HELM_RELEASE` anpassen (Standard: `soundboard`).
+Ausgerollt wird nicht aus der CI.
+Der Cluster läuft mit `image.tag=latest` und startet die Bots nach jedem neuen Build selbst neu; damit geht jeder Push auf `main` nach grüner CI live.
+Das Helm-Chart bleibt dabei unverändert (Stand 1.2.0), neue Funktionen kommen nur über das Image.
+Welcher Stand läuft, zeigen das Webinterface (unten in der Seitenleiste) und `/help`, z. B. „Version 703a78c vom 13.10.2026“.
 
 ## Lokal testen
 

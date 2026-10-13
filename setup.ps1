@@ -175,6 +175,19 @@ if ($oldContainers.Count -gt 0) {
     docker network rm claudemumble_default *> $null
 }
 
+# Version for the web interface and /help: commit and its date, "+" for uncommitted changes.
+# The commit date (not today) keeps the build cached when nothing changed.
+$env:BARD_BOARD_REVISION = ''
+$env:BARD_BOARD_DATE = ''
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $revision = git rev-parse HEAD 2> $null
+    if ($LASTEXITCODE -eq 0 -and $revision) {
+        $dirty = git status --porcelain --untracked-files=no 2> $null
+        $env:BARD_BOARD_REVISION = $revision + $(if ($dirty) { '+' } else { '' })
+        $env:BARD_BOARD_DATE = git log -1 --format=%cs 2> $null
+    }
+}
+
 Info 'Baue und starte die Container (beim ersten Mal dauert das ein paar Minuten) ...'
 docker compose @composeArgs up -d --build --remove-orphans
 if ($LASTEXITCODE -ne 0) { Fail 'docker compose up ist fehlgeschlagen (Ausgabe oben).' }
