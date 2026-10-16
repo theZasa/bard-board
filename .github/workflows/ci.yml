@@ -41,23 +41,6 @@ jobs:
       - name: JavaScript-Syntax
         run: node --check static/app.js
 
-  test:
-    name: Unit-Tests
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Systempakete
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg libopus0
-      - name: Python-Pakete
-        run: pip install -r requirements.txt -r requirements-discord.txt
-      - name: Tests
-        run: python -m unittest discover -s tests -t . -v
-
   e2e:
     name: End-to-End (echter Mumble-Server)
     runs-on: ubuntu-24.04
@@ -141,9 +124,10 @@ jobs:
             echo "::error::Chart rendert einen öffentlichen Ingress ohne Passwort"; exit 1
           fi
 
+  # Runs in parallel to the other checks: builds, runs the unit tests inside the image and pushes it
+  # under its sha tag only. "latest" (what the cluster runs) is set by "publish" once everything passed.
   image:
-    name: Image bauen
-    needs: [lint, test, e2e, helm]
+    name: Image bauen und testen
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -169,9 +153,10 @@ jobs:
             BARD_BOARD_DATE=${{ steps.tag.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Unit-Tests im Image
+        run: docker run --rm bard-board:ci python -m unittest discover -s tests -t .
       - name: Image testen
         run: |
-          docker run --rm bard-board:ci python -m unittest discover -s tests -t .
           docker run --rm bard-board:ci python -c "import discord, davey, nacl; print('Discord-Sprache verfügbar')"
           # Die Versionsanzeige (Webinterface und /help) nennt genau diesen Commit.
           docker run --rm bard-board:ci python -c "from app import version; print(version.describe())" | tee /dev/stderr | grep -q "${GITHUB_SHA::7}"
@@ -194,12 +179,7 @@ jobs:
         with:
           # Image heißt wie das Repository, z. B. ghcr.io/thezasa/bard-board
           images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=${{ steps.tag.outputs.tag }}
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+          tags: type=raw,value=${{ steps.tag.outputs.tag }}
       - name: Anmelden bei GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
@@ -220,10 +200,48 @@ jobs:
             BARD_BOARD_DATE=${{ steps.tag.outputs.date }}
           cache-from: type=gha
 
+  # Only now the image goes live: "latest" (and "main", version tags) point to the tested sha image.
+  # Retagging in the registry takes seconds, nothing is built again.
+  publish:
+    name: Freigeben
+    if: github.event_name != 'pull_request'
+    needs: [image, e2e, lint, helm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Anmelden bei GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Getestetes Image freigeben
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          SOURCE_TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          image=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          args=()
+          while read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$image:$SOURCE_TAG"
+          echo "Freigegeben: $(echo "$TAGS" | tr '\n' ' ')"
+
   chart:
     name: Chart veröffentlichen
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [image]
+    needs: [publish]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
