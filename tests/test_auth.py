@@ -363,3 +363,45 @@ class WebRoutesTest(unittest.TestCase):
             self.assertEqual(asgi(app, "GET", "/api/state")[0], 200)
             self.assertEqual(asgi(app, "GET", "/auth/status")[1], {"enabled": False})
             self.assertEqual(asgi(app, "POST", "/auth/code")[0], 404)
+
+
+class StaticCacheTest(unittest.TestCase):
+    """After an update the browser must not mix a cached old style.css with a new script."""
+
+    def test_static_files_are_revalidated(self):
+        from app.web import create_app
+        from tests.test_commands import make_board
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = create_app(make_board(Path(tmp)))
+            for path in ("/style.css", "/app.js", "/", "/login.html"):
+                status, _, headers = asgi_raw(app, path)
+                self.assertEqual(status, 200, path)
+                self.assertEqual(headers.get("cache-control"), ["no-cache"], path)
+
+
+def asgi_raw(app, path: str) -> tuple[int, bytes, dict]:
+    sent = []
+    requested = False
+
+    async def receive():
+        # The request once; afterwards the client just stays connected (file responses listen for a
+        # disconnect while they stream, an endless stream of requests would keep them busy forever).
+        nonlocal requested
+        if not requested:
+            requested = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.Event().wait()
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": "http", "method": "GET", "path": path, "raw_path": path.encode(), "query_string": b"",
+             "headers": [(b"host", b"localhost:8080")], "scheme": "http", "server": ("localhost", 8080),
+             "client": ("127.0.0.1", 1), "http_version": "1.1", "root_path": ""}
+    asyncio.run(app(scope, receive, send))
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    hdrs: dict = {}
+    for k, v in start["headers"]:
+        hdrs.setdefault(k.decode(), []).append(v.decode())
+    return start["status"], b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body"), hdrs

@@ -46,6 +46,20 @@ async def _json(request: Request) -> dict:
     return body
 
 
+class FreshStaticFiles(StaticFiles):
+    """The web interface's files, always revalidated by the browser.
+
+    Without a Cache-Control header browsers guess how long to keep a file and may use an old style.css
+    with a new script after an update. "no-cache" makes them ask every time; thanks to the ETag an
+    unchanged file costs only a tiny 304 answer.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def who(request: Request) -> str:
     """The signed-in person (see auth.LoginGate), or "Web" when no login is needed."""
     return request.scope.get("web_user") or WEB_USER
@@ -642,7 +656,7 @@ def create_app(board: Soundboard) -> Starlette:
         Route("/api/youtube-cookies", youtube_cookies_delete, methods=["DELETE"]),
         *auth_routes,
         WebSocketRoute("/ws", websocket),
-        Mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static"),
+        Mount("/", FreshStaticFiles(directory=STATIC_DIR, html=True), name="static"),
     ]
     middleware = [Middleware(LoginGate, login=board.web_login)] if board.web_login else []
     return Starlette(routes=routes, lifespan=lifespan, middleware=middleware,
