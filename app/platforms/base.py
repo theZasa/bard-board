@@ -50,6 +50,9 @@ class IncomingText:
     account: str = ""
     # Answer only the sender (e.g. the result of /login); None = reply is private already or impossible.
     reply_private: Callable[[str], Awaitable[None] | None] | None = None
+    # Relayed by a server integration ("noah(via Steam): ..."): the name is not verified, so no admin
+    # commands and no /login.
+    relayed: bool = False
 
 
 class AudioSink(Protocol):

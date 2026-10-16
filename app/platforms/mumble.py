@@ -33,6 +33,17 @@ def strip_html(message: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# A server integration relays chat from elsewhere as a server message: "noah(via Steam): text".
+_RELAYED = re.compile(r"^\s*(?P<name>[^():\n]{1,64}?)\s*\(via (?P<via>[^()\n]{1,32})\):\s*(?P<text>\S.*?)\s*$",
+                      re.DOTALL)
+
+
+def parse_relayed(text: str) -> tuple[str, str, str] | None:
+    """(name, service, text) of a relayed message, None for other server messages."""
+    match = _RELAYED.match(text)
+    return (match["name"].strip(), match["via"].strip(), match["text"]) if match else None
+
+
 def mumble_account(user_id: int | None, name: str) -> str:
     """Registered users keep their ID (safe, survives renames); others are known only by name."""
     if user_id is not None and user_id >= 0:
@@ -206,13 +217,16 @@ class MumblePlatform:
 
     async def on_text_message(self, msg: TextMessage) -> None:
         c = self.client
-        if msg.actor is None or msg.actor == c.session:
+        if msg.actor == c.session:
             return
         me = c.myself
         if msg.is_private:
             if c.session not in msg.sessions:
                 return
         elif me is None or not (me.channel_id in msg.channel_ids or msg.tree_ids):
+            return
+        if msg.actor is None:
+            await self._relayed(msg)
             return
         sender = msg.sender or f"Session {msg.actor}"
         actor = c.users.get(msg.actor)
@@ -238,6 +252,36 @@ class MumblePlatform:
             source="mumble",
             account=mumble_account(actor.user_id if actor else None, sender),
             reply_private=None if msg.is_private else (lambda text: reply(text, private=True)),
+        ))
+
+    async def _relayed(self, msg: TextMessage) -> None:
+        """A server message (no sender): only "name(via service): text" from an integration counts.
+
+        Only the server can send these, so a user cannot fake one; the name itself is the integration's
+        word, which is why such messages get no admin commands and no /login (see commands.py).
+        """
+        parsed = parse_relayed(strip_html(msg.message))
+        if parsed is None:
+            return
+        name, via, text = parsed
+        c = self.client
+
+        def reply(html_text: str) -> None:
+            try:
+                if c.myself is not None:
+                    c.send_text(html_text, channel_id=c.myself.channel_id)
+            except ConnectionError:
+                log.warning("Antwort konnte nicht gesendet werden (nicht verbunden)")
+
+        await self.board.on_text(IncomingText(
+            sender=name,
+            sender_id=f"relay:{via.casefold()}:{name.casefold()}",
+            text=text,
+            reply=reply,
+            links=[html.unescape(h) for h in _HREF.findall(msg.message)],
+            is_admin=False,
+            source="mumble",
+            relayed=True,
         ))
 
     async def on_user_changed(self, user: User, old: User | None) -> None:

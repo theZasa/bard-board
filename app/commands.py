@@ -168,6 +168,9 @@ class CommandHandler:
             ctx.args = f"{name} {args}".strip()
             await self._with_cooldown(ctx, self.cmd_sound, shortcut=True)
             return
+        if cmd.admin and ctx.msg.relayed:
+            self.reply(ctx, "Admin-Befehle gehen nicht über eine Weiterleitung, nur direkt aus dem Chat.")
+            return
         if cmd.admin and not ctx.admin:
             self.reply(ctx, "Dieser Befehl ist Admins vorbehalten.")
             return
@@ -814,6 +817,9 @@ class CommandHandler:
         """Device-flow login: the code from the web login page unlocks that browser for the sender."""
         from .auth import LoginError
 
+        if ctx.msg.relayed:
+            self.reply(ctx, "Die Anmeldung geht nur direkt aus Mumble oder Discord, nicht über eine Weiterleitung.")
+            return
         login = self.board.web_login
         if login is None:
             self.reply(ctx, "Dieses Webinterface braucht keine Anmeldung.", private=True)
