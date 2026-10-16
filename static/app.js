@@ -579,8 +579,10 @@ $("#search-clear").addEventListener("click", () => {
   setQuery("");
   search.focus();
 });
-search.addEventListener("keydown", (e) => {
+search.addEventListener("keydown", async (e) => {
   if (e.key === "Enter") {
+    // A bare number is a taunt, like in the AoE2 chat (see eastereggs.js); otherwise the first sound.
+    if (/^\d{1,3}$/.test(view.query) && (await playTaunt(view.query))) return;
     const first = visibleSounds()[0];
     if (first) play(first.id, $(`.tile[data-id="${first.id}"]`));
   } else if (e.key === "Escape" && search.value) {

@@ -939,3 +939,54 @@ a.player-title[href]:hover { text-decoration: underline; }
 .account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .account-temp { color: var(--warn); font-weight: 600; }
 .kv li.passkey-row { grid-template-columns: 1fr auto; }
+
+/* ---------------------------------------------------------------- easter eggs */
+/* Dota chat wheel (hold Y) */
+.wheel {
+  position: fixed;
+  z-index: 70;
+  width: 320px;
+  height: 320px;
+  margin: -160px 0 0 -160px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  animation: wheel-in 0.12s ease-out;
+}
+@keyframes wheel-in { from { transform: scale(0.85); opacity: 0; } }
+.wheel-hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  font: 600 13px var(--mono);
+}
+.wheel-item {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 112px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+.wheel-item.active, .wheel-item:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Konami code: Leeroy mode */
+@keyframes leeroy { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+.grid.leeroy .tile { animation: leeroy 0.25s ease-in-out 4; }

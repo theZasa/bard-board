@@ -39,7 +39,7 @@ jobs:
       - name: Shell-Skripte
         run: shellcheck tools/ci/*.sh
       - name: JavaScript-Syntax
-        run: node --check static/app.js
+        run: for f in static/*.js; do node --check "$f"; done
 
   e2e:
     name: End-to-End (echter Mumble-Server)
