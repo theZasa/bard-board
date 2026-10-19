@@ -4,7 +4,7 @@ starlette>=1.0,<2
 uvicorn>=0.35,<1
 websockets>=15
 python-multipart>=0.0.20
-numpy>=2.1,<3
+numpy>=2.5.4,<3
 protobuf>=6.31.1,<8
 cryptography>=49
 # Passkeys for the web login (WebAuthn checks, see app/auth.py).
