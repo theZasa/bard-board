@@ -319,7 +319,11 @@ class DiscordPlatform:
         self.cfg = cfg
         self.board: "Soundboard | None" = None
         self.client: _Client | None = None
+        # The bot may be on several servers (all, or those in DISCORD_GUILD) but in one voice channel at a
+        # time: "guild" is where it is (or will be) in voice, "guilds" are all servers it answers on.
         self.guild: Any = None
+        self.guilds: list[Any] = []
+        self._synced: set[int] = set()
         self.audio = DiscordAudio(self)
         self.last_error = ""
         self.notices: dict[str, str] = {}  # shown above the web interface until fixed
@@ -402,6 +406,8 @@ class DiscordPlatform:
     async def _close_client(self, client: _Client) -> None:
         self.audio.reset()
         self.guild = None
+        self.guilds = []
+        self._synced.clear()
         if not client.is_closed():
             try:
                 await client.close()
@@ -421,17 +427,28 @@ class DiscordPlatform:
 
     # --------------------------------------------------------- gateway events
 
-    def _pick_guild(self, guilds: list[Any]) -> Any:
-        wanted = self.cfg.discord_guild.strip()
-        if wanted:
-            for g in guilds:
-                if str(g.id) == wanted or g.name.casefold() == wanted.casefold():
-                    return g
-            return None
-        if len(guilds) > 1:
-            log.warning("Der Bot ist auf mehreren Servern (%s) - nehme %s. DISCORD_GUILD legt das fest.",
-                        ", ".join(g.name for g in guilds), guilds[0].name)
-        return guilds[0] if guilds else None
+    def _allowed_guilds(self, guilds: list[Any]) -> list[Any]:
+        """The servers the bot answers on: those named in DISCORD_GUILD (comma separated, in that order),
+        or all it is on."""
+        wanted = [w.strip() for w in self.cfg.discord_guild.split(",") if w.strip()]
+        if not wanted:
+            return list(guilds)
+        allowed = []
+        for w in wanted:
+            g = next((g for g in guilds if str(g.id) == w or g.name.casefold() == w.casefold()), None)
+            if g is not None and g not in allowed:
+                allowed.append(g)
+        return allowed
+
+    def _guild_by_id(self, guild_id: int | None) -> Any:
+        return next((g for g in self.guilds if g.id == guild_id), None)
+
+    def _guilds_current_first(self) -> list[Any]:
+        return sorted(self.guilds, key=lambda g: self.guild is None or g.id != self.guild.id)
+
+    @property
+    def multi(self) -> bool:
+        return len(self.guilds) > 1
 
     async def on_ready(self, gateway: bool = True) -> None:
         """Gateway ready, or the bot joined/left a server."""
@@ -441,7 +458,9 @@ class DiscordPlatform:
         if client.application_id:
             self.invite_url = discord.utils.oauth_url(
                 client.application_id, permissions=INVITE_PERMISSIONS, scopes=("bot", "applications.commands"))
-        guild = self._pick_guild(list(client.guilds))
+        self.guilds = self._allowed_guilds(list(client.guilds))
+        current = self._guild_by_id(self.guild.id) if self.guild is not None else None
+        guild = current or (self.guilds[0] if self.guilds else None)
         if guild is None:
             if self.guild is not None:
                 self.audio.reset()
@@ -452,26 +471,32 @@ class DiscordPlatform:
             log.warning("%s - Einladungslink: %s", self.last_error, self.invite_url)
             self.board.publish_status()
             return
-        first = self.guild is None or self.guild.id != guild.id
         self.guild = guild
         self.last_error = ""
         self._invite_needed = False
         if self.connected_since is None:
             self.connected_since = time.time()
-        if first:
-            log.info("Verbunden als %s auf %s", client.user, guild.name)
+        new = [g for g in self.guilds if g.id not in self._synced]
+        if new:
+            log.info("Verbunden als %s auf %s", client.user, ", ".join(g.name for g in self.guilds))
             log.info("Einladungslink: %s", self.invite_url)
-            self._spawn(self._sync_commands(client, guild))
+            for g in new:
+                self._synced.add(g.id)
+                self._spawn(self._sync_commands(client, g))
         elif not gateway:
             return
         self._ever_ready = True
-        await self.board.on_platform_ready(default_channel=self.cfg.discord_channel, server=guild.name)
+        await self.board.on_platform_ready(default_channel=self.cfg.discord_channel,
+                                           server=", ".join(g.name for g in self.guilds))
 
     async def on_voice_state_update(self, member: Any, before: Any, after: Any) -> None:
-        if self.guild is None or member.guild.id != self.guild.id:
+        guild = self._guild_by_id(member.guild.id)
+        if guild is None or self.guild is None:
             return
-        me = self.guild.me
+        me = guild.me
         is_me = me is not None and member.id == me.id
+        if is_me and guild.id != self.guild.id:
+            return  # leaving the server the bot just switched away from
         if is_me and after.channel is None:
             self.audio.reset()
         await self.board.on_user_moved(
@@ -503,10 +528,19 @@ class DiscordPlatform:
         return str(voice.channel.id) if voice is not None and voice.channel is not None else None
 
     def _voice_channel(self, channel_id: ChannelId | None) -> Any:
-        if self.guild is None or not channel_id or not channel_id.isdigit():
+        """A voice channel on any of our servers (Discord IDs are unique across servers)."""
+        if not channel_id or not channel_id.isdigit():
             return None
-        ch = self.guild.get_channel(int(channel_id))
-        return ch if isinstance(ch, VOICE_TYPES) else None
+        for guild in self.guilds:
+            ch = guild.get_channel(int(channel_id))
+            if isinstance(ch, VOICE_TYPES):
+                return ch
+        return None
+
+    def _path(self, ch: Any) -> str:
+        """Kategorie/Kanal, with the server in front when the bot is on several ("Freunde › Lobby")."""
+        path = channel_path(ch)
+        return f"{ch.guild.name} › {path}" if self.multi else path
 
     def bitrate_kbps(self) -> int:
         vc = self.voice_client
@@ -520,54 +554,70 @@ class DiscordPlatform:
             return []
         return [_member_user(m) for m in ch.members if not m.bot]
 
+    def _member(self, user_id: int) -> Any:
+        """The member on one of our servers; where they are in voice if anywhere, else the current server."""
+        found = None
+        for guild in self._guilds_current_first():
+            member = guild.get_member(user_id)
+            if member is None:
+                continue
+            if getattr(getattr(member, "voice", None), "channel", None) is not None:
+                return member
+            found = found or member
+        return found
+
     def user(self, user_id: str) -> PlatformUser | None:
-        if self.guild is None or not user_id.isdigit():
+        if not user_id.isdigit():
             return None
-        member = self.guild.get_member(int(user_id))
+        member = self._member(int(user_id))
         return _member_user(member) if member is not None else None
 
     def find_user(self, name: str) -> PlatformUser | None:
-        if self.guild is None:
-            return None
         wanted = name.strip().removeprefix("@").casefold()
         mention = re.fullmatch(r"<@!?(\d+)>", name.strip())
-        me_id = self.guild.me.id if self.guild.me is not None else None
-        best = None
-        for member in self.guild.members:
-            if member.id == me_id:
-                continue
-            if mention and member.id == int(mention.group(1)):
-                return _member_user(member)
-            names = (member.display_name, member.name, getattr(member, "global_name", None) or "")
-            if member.display_name.casefold() == wanted:
-                return _member_user(member)
-            if best is None and wanted in (n.casefold() for n in names if n):
-                best = member
-        return _member_user(best) if best is not None else None
+        if mention:
+            return self.user(mention.group(1))
+        exact = best = None
+        for guild in self._guilds_current_first():
+            me_id = guild.me.id if guild.me is not None else None
+            for member in guild.members:
+                if member.id == me_id:
+                    continue
+                names = (member.display_name, member.name, getattr(member, "global_name", None) or "")
+                if exact is None and member.display_name.casefold() == wanted:
+                    exact = member
+                if best is None and wanted in (n.casefold() for n in names if n):
+                    best = member
+        chosen = exact or best
+        # The same person on several servers: the one where they are in voice (that is where to follow).
+        return _member_user(self._member(chosen.id) or chosen) if chosen is not None else None
 
     def channels(self) -> list[ChannelInfo]:
-        if self.guild is None:
-            return []
         result = []
-        for ch in self.guild.channels:
-            if isinstance(ch, VOICE_TYPES):
-                result.append((getattr(ch.category, "position", -1), ch.position,
-                               ChannelInfo(str(ch.id), channel_path(ch), len(ch.members))))
-        return [info for *_, info in sorted(result, key=lambda r: (r[0], r[1]))]
+        for order, guild in enumerate(self.guilds):
+            for ch in guild.channels:
+                if isinstance(ch, VOICE_TYPES):
+                    result.append((order, getattr(ch.category, "position", -1), ch.position,
+                                   ChannelInfo(str(ch.id), self._path(ch), len(ch.members))))
+        return [info for *_, info in sorted(result, key=lambda r: r[:3])]
 
     def has_channel(self, channel_id: ChannelId) -> bool:
         return self._voice_channel(channel_id) is not None
 
     def find_channel(self, name: str) -> ChannelId | None:
+        """By id, "Server › Kategorie/Kanal", "Kategorie/Kanal" or just the name; the current server first."""
         wanted = name.strip().casefold()
-        for info in self.channels():
-            if wanted in (info.id, info.path.casefold(), info.path.rsplit("/", 1)[-1].casefold()):
+        current = self.guild.id if self.guild is not None else None
+        infos = sorted(self.channels(), key=lambda i: self._voice_channel(i.id).guild.id != current)
+        for info in infos:
+            local = info.path.split(" › ", 1)[-1].casefold()
+            if wanted in (info.id, info.path.casefold(), local, local.rsplit("/", 1)[-1]):
                 return info.id
         return None
 
     def channel_path(self, channel_id: ChannelId | None) -> str:
         ch = self._voice_channel(channel_id)
-        return channel_path(ch) if ch is not None else ""
+        return self._path(ch) if ch is not None else ""
 
     def channel_id_from(self, value: object) -> ChannelId:
         return str(int(str(value)))
@@ -585,6 +635,13 @@ class DiscordPlatform:
     async def _move(self, channel: Any) -> None:
         vc = self.voice_client
         try:
+            if self.guild is None or channel.guild.id != self.guild.id:
+                # Another server: only one voice channel at a time, so leave the old one first.
+                self.guild = channel.guild
+                if vc is not None:
+                    await vc.disconnect(force=True)
+                self.audio.reset()
+                vc = channel.guild.voice_client
             if vc is not None and vc.is_connected():
                 await vc.move_to(channel, timeout=CONNECT_TIMEOUT)
             else:
@@ -592,10 +649,10 @@ class DiscordPlatform:
                     await vc.disconnect(force=True)
                 await channel.connect(self_deaf=True, timeout=CONNECT_TIMEOUT, reconnect=True)
         except (discord.ClientException, discord.HTTPException, asyncio.TimeoutError, OSError) as exc:
-            log.warning("Sprachkanal %s: %s", channel_path(channel), str(exc) or type(exc).__name__)
-            self.board.log_activity("Discord", "system", f"Kanalwechsel nach {channel_path(channel)} fehlgeschlagen")
+            log.warning("Sprachkanal %s: %s", self._path(channel), str(exc) or type(exc).__name__)
+            self.board.log_activity("Discord", "system", f"Kanalwechsel nach {self._path(channel)} fehlgeschlagen")
         except Exception:  # noqa: BLE001
-            log.exception("Fehler beim Betreten von %s", channel_path(channel))
+            log.exception("Fehler beim Betreten von %s", self._path(channel))
         finally:
             self.board.publish_status()
 
@@ -666,16 +723,20 @@ class DiscordPlatform:
         return bool(cfg.admins) and (cfg.is_admin(member.display_name) or cfg.is_admin(member.name))
 
     async def _guild_member(self, user: Any) -> Any:
-        member = self.guild.get_member(user.id)
+        """The user as a member of one of our servers (for DMs and slash commands), None for strangers."""
+        member = self._member(user.id)
         if member is not None:
             return member
         cached = self._member_cache.get(user.id)
         if cached and time.monotonic() - cached[0] < 600:
             return cached[1]
-        try:
-            member = await self.guild.fetch_member(user.id)
-        except discord.HTTPException:
-            member = None
+        member = None
+        for guild in self._guilds_current_first():
+            try:
+                member = await guild.fetch_member(user.id)
+                break
+            except discord.HTTPException:
+                continue
         self._member_cache[user.id] = (time.monotonic(), member)
         return member
 
@@ -687,7 +748,7 @@ class DiscordPlatform:
         private = message.guild is None
         mentioned = me is not None and re.match(rf"<@!?{me.id}>", message.content.strip()) is not None
         if mentioned:  # clean_content shows the leading mention as "@Name"
-            member = self.guild.me if self.guild is not None else None
+            member = message.guild.me if message.guild is not None else None
             names = {getattr(member, "display_name", ""), me.name, getattr(me, "global_name", None) or ""}
             for name in sorted((n for n in names if n), key=len, reverse=True):
                 if text.startswith(f"@{name}"):
@@ -703,7 +764,7 @@ class DiscordPlatform:
         if self.guild is None or message.author.bot or self.board is None:
             return
         if message.guild is not None:
-            if message.guild.id != self.guild.id or not self.accepts_channel(message.channel):
+            if self._guild_by_id(message.guild.id) is None or not self.accepts_channel(message.channel):
                 return
             member = message.author
         else:
@@ -714,7 +775,7 @@ class DiscordPlatform:
         if member is None:
             member = await self._guild_member(message.author)
             if member is None:
-                return  # DMs only from members of our server
+                return  # DMs only from members of our servers
         private = message.guild is None
         voice = getattr(member, "voice", None)
         channel = message.channel
@@ -813,7 +874,7 @@ class DiscordPlatform:
         return None
 
     async def run_slash(self, interaction: Any, name: str, args: str) -> None:
-        if self.guild is None or interaction.guild_id not in (None, self.guild.id):
+        if self.guild is None or (interaction.guild_id is not None and self._guild_by_id(interaction.guild_id) is None):
             await interaction.response.send_message("Dieser Bot gehört zu einem anderen Server.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -868,8 +929,9 @@ class DiscordPlatform:
             return
         client.tree.clear_commands(guild=None)
         self._build_commands(client)
-        if self.guild is not None and client.is_ready():
-            self._spawn(self._sync_commands(client, self.guild))
+        if client.is_ready():
+            for guild in self.guilds:
+                self._spawn(self._sync_commands(client, guild))
 
     async def _sync_commands(self, client: _Client, guild: Any) -> None:
         """Register the slash commands on our server; only when they changed (Discord rate limits this)."""
@@ -904,6 +966,7 @@ class DiscordPlatform:
         return {
             "connected": self.ready,
             "server": self.guild.name if self.guild is not None else "Discord",
+            "servers": [g.name for g in self.guilds],
             "server_release": "Discord",
             "username": (self.guild.me.display_name if self.guild is not None and self.guild.me is not None
                          else (user.name if user else "Soundboard")),

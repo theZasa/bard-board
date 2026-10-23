@@ -77,7 +77,7 @@ class Config:
 
     # Discord connection (token comes from the credentials file outside the project folder)
     discord_token: str = field(default="", repr=False)
-    discord_guild: str = ""  # server name or id, empty: the only server the bot is in
+    discord_guild: str = ""  # servers (names or ids, comma separated) the bot answers on; empty: all it is in
     discord_channel: str = ""  # voice channel to join on start
     discord_follow_user: str = ""
     discord_text_channels: list[str] = field(default_factory=list)  # extra channels that accept !commands

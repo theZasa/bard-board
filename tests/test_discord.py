@@ -237,6 +237,8 @@ class FakeGuild:
         self.noah = member(3, "Noah")
         self.members = [self.me, self.zasa, self.noah]
         self.voice_client = None
+        for ch in self.channels:
+            ch.guild = self
 
     def get_channel(self, cid):
         return next((c for c in self.channels if c.id == cid), None)
@@ -271,6 +273,7 @@ class DiscordPlatformTest(unittest.IsolatedAsyncioTestCase):
         self.platform = self.board.platform
         self.guild = FakeGuild()
         self.platform.guild = self.guild
+        self.platform.guilds = [self.guild]
         self.platform.client = SimpleNamespace(user=SimpleNamespace(id=1, name="soundboard", global_name=None),
                                                is_ready=lambda: True)
         self.texts = []
@@ -512,6 +515,133 @@ class DiscordPlatformTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(self.platform.run_forever(), 5)
         self.assertEqual(calls, [True, False])
         self.assertIn("Message Content", self.platform.status()["notice"])
+
+
+class SecondGuild(FakeGuild):
+    """Another server with the same bot and the same person (Zasa), not in voice there."""
+
+    def __init__(self):
+        self.id = 43
+        self.name = "Freunde"
+        self.lobby = FakeVoice(400, "Lobby", position=0)
+        self.kino = FakeVoice(401, "Kino", position=1)
+        self.chat = FakeText(500, "chat")
+        self.text_channels = [self.chat]
+        self.channels = [self.lobby, self.kino, self.chat]
+        self.me = member(1, "Soundboard", bot=True)
+        self.zasa = member(2, "Zasa")
+        self.mia = member(5, "Mia", channel=self.kino)
+        self.members = [self.me, self.zasa, self.mia]
+        self.voice_client = None
+        for ch in self.channels:
+            ch.guild = self
+
+
+@needs_discord
+class MultiServerTest(unittest.IsolatedAsyncioTestCase):
+    """One bot on several servers, in one voice channel at a time."""
+
+    async def asyncSetUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        patcher = mock.patch.object(discordbot, "VOICE_TYPES", (FakeVoice,))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.board = make_board(Path(self._tmp.name))
+        self.platform = self.board.platform
+        self.gilde, self.freunde = FakeGuild(), SecondGuild()
+        self.platform.client = SimpleNamespace(user=SimpleNamespace(id=1, name="soundboard", global_name=None),
+                                               is_ready=lambda: True, guilds=[self.gilde, self.freunde],
+                                               application_id=None)
+        self.platform.guilds = [self.gilde, self.freunde]
+        self.platform.guild = self.gilde
+        self.texts = []
+        self.board.on_text = mock.AsyncMock(side_effect=lambda msg: self.texts.append(msg))
+
+    async def asyncTearDown(self):
+        self._tmp.cleanup()
+
+    def configure(self, **changes):
+        self.board.cfg = self.platform.cfg = dataclasses.replace(self.board.cfg, **changes)
+
+    async def test_channels_of_all_servers_with_server_names(self):
+        self.assertEqual([(i.id, i.path) for i in self.platform.channels()],
+                         [("100", "Gilde › Lobby"), ("12345678901234567890", "Gilde › Freizeit/Musik"),
+                          ("400", "Freunde › Lobby"), ("401", "Freunde › Kino")])
+        self.assertEqual(self.platform.find_channel("lobby"), "100", "the current server first")
+        self.assertEqual(self.platform.find_channel("Freunde › Lobby"), "400")
+        self.assertEqual(self.platform.find_channel("kino"), "401")
+        self.assertEqual(self.platform.channel_path("401"), "Freunde › Kino")
+        self.assertEqual([u.name for u in self.platform.users_in_channel("401")], ["Mia"])
+
+    async def test_only_the_servers_in_discord_guild(self):
+        guilds = [self.gilde, self.freunde]
+        self.assertEqual(self.platform._allowed_guilds(guilds), guilds, "empty: all servers")
+        self.configure(discord_guild="Freunde")
+        self.assertEqual(self.platform._allowed_guilds(guilds), [self.freunde])
+        self.configure(discord_guild="43, gilde")
+        self.assertEqual(self.platform._allowed_guilds(guilds), [self.freunde, self.gilde], "in the given order")
+        self.configure(discord_guild="Unbekannt")
+        self.assertEqual(self.platform._allowed_guilds(guilds), [])
+
+    async def test_commands_from_every_server(self):
+        msg = SimpleNamespace(content="!sb tada", clean_content="!sb tada", author=self.freunde.mia,
+                              channel=self.freunde.chat, guild=self.freunde)
+        await self.platform.on_message(msg)
+        self.assertEqual((self.texts[-1].sender, self.texts[-1].sender_channel), ("Mia", "401"))
+        stranger = SimpleNamespace(id=99, name="fremd")
+        self.platform.guilds = [self.gilde]  # Freunde not allowed (DISCORD_GUILD)
+        await self.platform.on_message(SimpleNamespace(content="!sb tada", clean_content="!sb tada",
+                                                       author=self.freunde.mia, channel=self.freunde.chat,
+                                                       guild=self.freunde))
+        self.assertEqual(len(self.texts), 1, "servers not in DISCORD_GUILD are ignored")
+        self.assertIsNone(await self.platform._guild_member(stranger))
+
+    async def test_direct_messages_from_members_of_any_server(self):
+        self.assertIs(await self.platform._guild_member(SimpleNamespace(id=5)), self.freunde.mia)
+
+    async def test_come_moves_the_bot_to_the_other_server(self):
+        old = self.gilde.voice_client = SimpleNamespace(is_connected=lambda: True, disconnect=mock.AsyncMock(),
+                                                        move_to=mock.AsyncMock())
+        self.platform.audio.reset = mock.Mock()
+        self.freunde.kino.connect = mock.AsyncMock()
+        self.platform.move_to("401")
+        await self.platform._moving
+        old.disconnect.assert_awaited_once_with(force=True)
+        old.move_to.assert_not_awaited()
+        self.freunde.kino.connect.assert_awaited_once_with(self_deaf=True, timeout=discordbot.CONNECT_TIMEOUT,
+                                                           reconnect=True)
+        self.assertIs(self.platform.guild, self.freunde, "the bot is on one server's voice channel at a time")
+        self.platform.audio.reset.assert_called_once()
+        # Discord then reports the bot leaving the old server: that must not stop the new playback.
+        me_old = SimpleNamespace(**vars(self.gilde.me), guild=self.gilde)
+        self.board.on_user_moved = mock.AsyncMock()
+        await self.platform.on_voice_state_update(me_old, SimpleNamespace(channel=self.gilde.lobby),
+                                                  SimpleNamespace(channel=None))
+        self.platform.audio.reset.assert_called_once()
+        self.board.on_user_moved.assert_not_awaited()
+
+    async def test_follow_finds_people_where_they_are_in_voice(self):
+        self.gilde.zasa.voice = None  # Zasa is now in voice on Freunde, not on Gilde
+        self.freunde.zasa.voice = SimpleNamespace(channel=self.freunde.lobby, self_mute=False, mute=False,
+                                                  self_deaf=False, deaf=False)
+        self.assertEqual(self.platform.find_user("Zasa").channel_id, "400")
+        self.assertEqual(self.platform.user("2").channel_id, "400")
+
+    async def test_slash_commands_on_every_allowed_server(self):
+        sent = mock.AsyncMock()
+        stranger = SimpleNamespace(guild_id=99, response=SimpleNamespace(send_message=sent))
+        await self.platform.run_slash(stranger, "np", "")
+        self.assertIn("anderen Server", sent.call_args.args[0])
+        self.board.commands.run = mock.AsyncMock()
+        interaction = SimpleNamespace(
+            guild_id=43, user=self.freunde.mia, response=SimpleNamespace(defer=mock.AsyncMock()),
+            followup=SimpleNamespace(send=mock.AsyncMock()))
+        await self.platform.run_slash(interaction, "np", "")
+        self.board.commands.run.assert_awaited_once()
+
+    async def test_status_names_the_current_server(self):
+        status = self.platform.status()
+        self.assertEqual((status["server"], status["servers"]), ("Gilde", ["Gilde", "Freunde"]))
 
 
 class PlayerVoiceClient:

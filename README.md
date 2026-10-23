@@ -75,6 +75,11 @@ Der Token liegt wie die Mumble-Zugangsdaten außerhalb des Projektordners in `%U
 Der Discord-Container bekommt nur diese Datei, der Mumble-Container nur `zugang.env`.
 Bleibt `DISCORD_TOKEN` leer, läuft nur der Mumble-Bot.
 
+Der Bot kann auf mehreren Servern sein, ist aber immer nur in einem Sprachkanal gleichzeitig.
+Befehle gehen auf jedem Server, `!come` holt ihn von einem Server auf einen anderen, Warteschlange und Lautstärke wandern mit.
+Im Webinterface steht vor jedem Kanal der Servername, z. B. „Freunde › Lobby“.
+Mit `DISCORD_GUILD` lässt sich das auf bestimmte Server beschränken (Namen oder IDs, kommagetrennt).
+
 Oben links im Webinterface schaltet „Mumble | Discord“ zwischen den beiden Bots um.
 Ein ausgegrauter Eintrag heißt, dass der andere Bot gerade nicht läuft.
 
@@ -121,7 +126,7 @@ Nach einer Änderung `start.bat` ausführen.
 | `PULL_SOUND` | leer | Eigener Sound am Ende des Pull-Timers statt des Kriegshorns |
 | `PULL_MAX_SECONDS` | `120` | Längster erlaubter Pull-Timer |
 | `DISCORD_HOST_PORT` | `8081` | Port des Discord-Webinterfaces auf deinem PC |
-| `DISCORD_GUILD` | leer | Server (Name oder ID), falls der Bot auf mehreren ist |
+| `DISCORD_GUILD` | leer | Server, auf denen der Bot reagiert (Namen oder IDs, kommagetrennt; leer = alle, auf denen er ist) |
 | `DISCORD_CHANNEL` | leer | Sprachkanal nach dem Start (leer = erst auf `!come` oder über das Webinterface) |
 | `DISCORD_FOLLOW_USER` | leer | Der Discord-Bot folgt diesem Benutzer (Anzeigename) von Kanal zu Kanal |
 | `DISCORD_TEXT_CHANNELS` | leer | Textkanäle für `!`-Befehle, kommagetrennt (leer = alle) |
