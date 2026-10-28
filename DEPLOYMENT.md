@@ -131,6 +131,17 @@ kubectl -n soundboard scale deploy/soundboard-bard-board-mumble deploy/soundboar
 Später neu hinzugekommene Sammlungen lassen sich genauso nachliefern; vorhandene Dateien werden dabei überschrieben, nichts wird gelöscht.
 Neue Sammlungen erkennen die Bots ohne Neustart beim nächsten Einlesen (alle 10 Minuten) oder sofort über den Neu-laden-Knopf im Webinterface.
 
+### Discord-Bot auf mehreren Servern
+
+Derselbe Discord-Bot kann auf mehreren Servern sein, ist aber immer nur in einem Sprachkanal gleichzeitig.
+Dafür braucht es kein zweites Deployment: den Bot einfach auf die weiteren Server einladen.
+Den Einladungslink zeigt das Webinterface, solange der Bot auf keinem Server ist, und er steht beim Start im Log (`kubectl -n soundboard logs deploy/soundboard-bard-board-discord | grep Einladungslink`).
+Alternativ im Discord Developer Portal unter „OAuth2“ → „URL Generator“ mit den Scopes `bot` und `applications.commands`.
+
+Steht in der `values.yaml` unter `discord.settings` ein `DISCORD_GUILD`, reagiert der Bot nur auf diesen Server.
+Für mehrere Server die Namen oder IDs kommagetrennt eintragen (`DISCORD_GUILD: "Gilde,Freunde"`) oder den Eintrag entfernen, dann gelten alle Server, auf denen der Bot ist.
+Danach `helm upgrade … --reuse-values --set-string discord.settings.DISCORD_GUILD="Gilde\,Freunde"` oder die geänderte `values.yaml` einspielen; das Chart selbst bleibt unverändert.
+
 ### Später: Sammlungen aus einem S3-Bucket
 
 Für große, wachsende Sammlungen kann ein Bucket (z. B. Hetzner Object Storage oder Backblaze B2) die Quelle sein.
