@@ -28,7 +28,9 @@ Volumes mit Daten bleiben bei `helm uninstall` erhalten.
 - Ausgehende Verbindungen:
   - TCP zum Mumble-Server (Standard-Port 64738).
   - HTTPS zu `discord.com` und `gateway.discord.gg`.
-  - **UDP** zu Discords Sprachservern (wechselnde Adressen und Ports); ohne UDP verbindet sich der Discord-Bot, bleibt aber stumm.
+  - Zu Discords Sprachservern (`*.discord.media`, wechselnde Adressen, u. a. Cloudflare):
+    **TCP 443, 2053, 2083, 2087, 2096 und 8443** für den Verbindungsaufbau (Discord wählt bei jeder Verbindung einen davon) und **UDP 50000 bis 65535** für den Ton.
+    Fehlt einer der TCP-Ports, scheitert das Betreten eines Sprachkanals mal ja, mal nein, mit „Connection refused … discord.media:<Port>“; fehlt UDP, verbindet sich der Bot, bleibt aber stumm.
   - HTTPS zu YouTube und `googlevideo.com` für die Musik.
   - HTTPS zu `pypi.org` und `files.pythonhosted.org`: yt-dlp aktualisiert sich beim Start und sieht täglich nach neuen Versionen.
     Ohne diesen Zugang läuft der Bot mit der yt-dlp-Version aus dem Image weiter.
