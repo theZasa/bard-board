@@ -990,3 +990,6 @@ a.player-title[href]:hover { text-decoration: underline; }
 /* Konami code: Leeroy mode */
 @keyframes leeroy { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
 .grid.leeroy .tile { animation: leeroy 0.25s ease-in-out 4; }
+
+/* Without admin rights (DISCORD_ADMINS): controls for managing sounds and settings are hidden */
+.limited .admin-only { display: none !important; }

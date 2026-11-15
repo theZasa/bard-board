@@ -385,7 +385,7 @@ class CommandHandler:
                 extra = ""
                 if aliases and cmd.names[1:]:
                     extra = f" {muted}· {', '.join(p + a for a in cmd.names[1:])}</font>"
-                lock = " &#128274;" if cmd.admin and (self.cfg.admins or self.cfg.discord_admin_role) else ""
+                lock = " &#128274;" if cmd.admin and (self.cfg.admins or self.cfg.discord_admin_role or self.cfg.discord_admins) else ""
                 rows.append(f"<tr><td><code>{p}{cmd.names[0]}{usage}</code>&nbsp;&nbsp;</td>"
                             f"<td>{text}{extra}{lock}</td></tr>")
         others = [q for q in self.cfg.command_prefixes if q != prefix]

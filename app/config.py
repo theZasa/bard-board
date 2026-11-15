@@ -82,6 +82,8 @@ class Config:
     discord_follow_user: str = ""
     discord_text_channels: list[str] = field(default_factory=list)  # extra channels that accept !commands
     discord_admin_role: str = ""
+    # Discord user IDs with admin rights in chat and web interface (empty: as before, see is_admin)
+    discord_admins: list[str] = field(default_factory=list)
 
     # Chat commands
     command_prefixes: list[str] = field(default_factory=lambda: ["/", "!"])
@@ -237,6 +239,7 @@ class Config:
             discord_follow_user=_str("DISCORD_FOLLOW_USER"),
             discord_text_channels=_list("DISCORD_TEXT_CHANNELS"),
             discord_admin_role=_str("DISCORD_ADMIN_ROLE"),
+            discord_admins=_list("DISCORD_ADMINS"),
             mumble_host=host,
             mumble_port=_int("MUMBLE_PORT", 64738, 1, 65535),
             mumble_user=_str("MUMBLE_USER", "Soundboard") or "Soundboard",

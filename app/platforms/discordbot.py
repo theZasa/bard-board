@@ -712,7 +712,9 @@ class DiscordPlatform:
 
     def is_admin(self, member: Any) -> bool:
         cfg = self.cfg
-        if not cfg.admins and not cfg.discord_admin_role:
+        if not cfg.admins and not cfg.discord_admin_role and not cfg.discord_admins:
+            return True
+        if str(member.id) in cfg.discord_admins:
             return True
         perms = getattr(member, "guild_permissions", None)
         if perms is not None and perms.administrator:

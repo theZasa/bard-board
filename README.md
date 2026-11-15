@@ -131,6 +131,7 @@ Nach einer Änderung `start.bat` ausführen.
 | `DISCORD_FOLLOW_USER` | leer | Der Discord-Bot folgt diesem Benutzer (Anzeigename) von Kanal zu Kanal |
 | `DISCORD_TEXT_CHANNELS` | leer | Textkanäle für `!`-Befehle, kommagetrennt (leer = alle) |
 | `DISCORD_ADMIN_ROLE` | leer | Rolle, die Admin-Befehle nutzen darf (Server-Admins dürfen immer) |
+| `DISCORD_ADMINS` | leer | Discord-Benutzer-IDs der Admins, kommagetrennt (Chat und Webinterface, siehe unten) |
 
 Beide Bots lesen dieselbe `.env`.
 `MUMBLE_*` gilt nur für Mumble, `DISCORD_*` nur für Discord, alles andere für beide.
@@ -361,8 +362,14 @@ Discord zeigt dabei eine Liste der Befehle, bei `/sb`, `/joinsound`, `/radio` un
 Antworten auf Slash-Befehle sieht nur, wer den Befehl geschickt hat, damit der Kanal nicht zugespammt wird.
 Ansagen wie „Jetzt: …“ erscheinen im Chat des Sprachkanals, in dem der Bot ist.
 
-Admin-Befehle (`!vol`, `!come`, `!follow`, `!unfollow`, `!mvol`) dürfen Server-Admins, die Rolle aus `DISCORD_ADMIN_ROLE` und die Namen aus `ADMINS`.
-Ist weder `ADMINS` noch `DISCORD_ADMIN_ROLE` gesetzt, dürfen alle.
+Admin-Befehle (`!vol`, `!come`, `!follow`, `!unfollow`, `!mvol`) dürfen Server-Admins, die Rolle aus `DISCORD_ADMIN_ROLE`, die IDs aus `DISCORD_ADMINS` und die Namen aus `ADMINS`.
+Ist nichts davon gesetzt, dürfen alle.
+
+Mit `DISCORD_ADMINS` (Discord-Benutzer-IDs, kommagetrennt) gibt es auch im angemeldeten Discord-Webinterface Rechte.
+Nur diese Admins dürfen dort Sounds hochladen, löschen, umbenennen, verschieben und ihre Lautstärke ändern, Clips speichern, Sammlungszeilen aufs Board legen, Sender anlegen und löschen, YouTube-Cookies hinterlegen und Join-Sounds oder Kürzel anderer ändern.
+Alle anderen sehen diese Knöpfe nicht; abspielen, Musik, Favoriten und der eigene Join-Sound gehen für alle.
+Die eigene ID findest du in Discord mit eingeschaltetem Entwicklermodus (Einstellungen → Erweitert) per Rechtsklick auf deinen Namen → „Benutzer-ID kopieren“.
+Ist `DISCORD_ADMINS` leer, dürfen im Webinterface alle alles; lokal ohne Anmeldung und im Mumble-Webinterface ändert sich nichts.
 
 ## Technik
 

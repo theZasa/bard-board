@@ -364,6 +364,7 @@ class LoginGate:
         session = self.login.session(token)
         if session is not None:
             scope["web_user"] = self.login.name_of(session["account"])
+            scope["web_account"] = session["account"]
             scope["web_session"] = token
         path = scope.get("path", "")
         if session is not None or path in OPEN_PATHS or path.startswith(OPEN_PREFIX):

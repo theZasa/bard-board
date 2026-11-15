@@ -66,6 +66,19 @@ def who(request: Request) -> str:
 
 
 def create_app(board: Soundboard) -> Starlette:
+    def web_admin(request: Request) -> bool:
+        """Admin rights in the web interface. Only the public Discord interface with DISCORD_ADMINS set
+        restricts anything: there the signed-in Discord user ID decides. Local and Mumble stay open."""
+        cfg = board.cfg
+        if board.web_login is None or cfg.platform != "discord" or not cfg.discord_admins:
+            return True
+        kind, _, user_id = str(request.scope.get("web_account", "")).partition(":")
+        return kind == "discord" and user_id in cfg.discord_admins
+
+    def need_admin(request: Request, what: str) -> None:
+        if not web_admin(request):
+            raise HTTPException(403, f"{what} dürfen nur Admins.")
+
     def sound_or_404(request: Request):
         sound = board.library.get(request.path_params["sid"])
         if sound is None:
@@ -146,6 +159,8 @@ def create_app(board: Soundboard) -> Starlette:
         sound = sound_or_404(request)
         body = await _json(request)
         allowed = {k: body[k] for k in ("volume", "favorite", "name", "category") if k in body}
+        if allowed.keys() - {"favorite"}:  # favorites are for everyone
+            need_admin(request, "Sounds umbenennen, verschieben oder ihre Lautstärke ändern")
         try:
             sound = await asyncio.to_thread(board.update_sound, sound, **allowed)
         except (ValueError, OSError) as exc:
@@ -153,6 +168,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse(sound.to_json())
 
     async def delete_sound(request: Request) -> Response:
+        need_admin(request, "Sounds löschen")
         sound = sound_or_404(request)
         try:
             await asyncio.to_thread(board.delete_sound, sound)
@@ -163,6 +179,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse({"ok": True})
 
     async def upload(request: Request) -> Response:
+        need_admin(request, "Sounds hochladen")
         max_bytes = board.cfg.max_upload_mb * 1024 * 1024
         form = await request.form(max_files=100, max_fields=20)
         category = str(form.get("category") or "").strip()
@@ -287,6 +304,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse({"volume": board.music_volume(value, requested_by=who(request), source="web")})
 
     async def clip(request: Request) -> Response:
+        need_admin(request, "Clips speichern")
         body = await _json(request)
         url = str(body.get("url", "")).strip()
         if not url:
@@ -341,17 +359,22 @@ def create_app(board: Soundboard) -> Starlette:
         sound = board.library.get(str(body.get("sound_id", "")))
         if not user:
             return _error(400, "Benutzername fehlt")
+        if user.casefold() != who(request).casefold():
+            need_admin(request, "Join-Sounds für andere setzen")
         if sound is None:
             return _error(404, "Sound nicht gefunden")
         board.set_join_sound(user, sound, set_by=who(request), source="web")
         return JSONResponse(board.extras_json())
 
     async def joinsound_delete(request: Request) -> Response:
+        if request.path_params["user"].casefold() != who(request).casefold():
+            need_admin(request, "Join-Sounds anderer entfernen")
         if not board.remove_join_sound(request.path_params["user"], set_by=who(request), source="web"):
             return _error(404, "Kein Join-Sound für diesen Benutzer")
         return JSONResponse(board.extras_json())
 
     async def radio_set(request: Request) -> Response:
+        need_admin(request, "Sender anlegen")
         body = await _json(request)
         try:
             await board.radio_set(str(body.get("name", "")), str(body.get("url", "")), created_by=who(request), source="web")
@@ -360,6 +383,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse(board.extras_json())
 
     async def radio_delete(request: Request) -> Response:
+        need_admin(request, "Sender löschen")
         if not board.radio_remove(request.path_params["name"], removed_by=who(request), source="web"):
             return _error(404, "Sender nicht gefunden")
         return JSONResponse(board.extras_json())
@@ -379,6 +403,9 @@ def create_app(board: Soundboard) -> Starlette:
         target = str(body.get("target", "")).strip()
         if not target:
             return _error(400, "Ziel fehlt")
+        existing = board.aliases.get(name.casefold())
+        if existing is not None and existing.get("created_by", "").casefold() != who(request).casefold():
+            need_admin(request, "Kürzel anderer ändern")
         if not any(target.startswith(p) for p in board.cfg.command_prefixes):
             match = board.library.resolve(target)
             sound = match.unique or (match.sounds[0] if match.sounds and match.exact else None)
@@ -392,6 +419,9 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse(board.extras_json())
 
     async def alias_delete(request: Request) -> Response:
+        existing = board.aliases.get(request.path_params["name"].casefold())
+        if existing is not None and existing.get("created_by", "").casefold() != who(request).casefold():
+            need_admin(request, "Kürzel anderer löschen")
         if not board.remove_alias(request.path_params["name"], removed_by=who(request), source="web"):
             return _error(404, "Kürzel nicht gefunden")
         return JSONResponse(board.extras_json())
@@ -458,6 +488,7 @@ def create_app(board: Soundboard) -> Starlette:
         return FileResponse(item.path, filename=item.path.name)
 
     async def collection_to_board(request: Request) -> Response:
+        need_admin(request, "Zeilen aufs Board legen")
         collection, item = item_or_404(request)
         try:
             sound, created = await board.item_to_board(collection, item, requested_by=who(request), source="web")
@@ -474,6 +505,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse(board.youtube_cookies_json())
 
     async def youtube_cookies_set(request: Request) -> Response:
+        need_admin(request, "YouTube-Cookies hinterlegen")
         async with request.form(max_files=1, max_fields=2) as form:
             upload_file = form.get("file")
             if not isinstance(upload_file, UploadFile):
@@ -486,6 +518,7 @@ def create_app(board: Soundboard) -> Starlette:
         return JSONResponse(board.youtube_cookies_json())
 
     async def youtube_cookies_delete(request: Request) -> Response:
+        need_admin(request, "YouTube-Cookies entfernen")
         board.remove_youtube_cookies(removed_by=who(request), source="web")
         return JSONResponse(board.youtube_cookies_json())
 
@@ -528,6 +561,7 @@ def create_app(board: Soundboard) -> Starlette:
             "user": login.name_of(session["account"]) if session else None,
             "expires": session["expires"] if session else None,
             "passkey": bool(session and session["passkey"]),
+            "admin": web_admin(request),
         }, headers={"cache-control": "no-store"})
 
     async def auth_code(_: Request) -> Response:

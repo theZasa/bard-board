@@ -671,14 +671,14 @@ function openMenu(s, x, y, alignRight = false) {
         previewId = s.id;
       }
     }),
-    el("div", { class: "menu-volume" }, icon("volume"), vol, volOut),
+    el("div", { class: "menu-volume admin-only" }, icon("volume"), vol, volOut),
     el("div", { class: "menu-sep" }),
     item("star", s.favorite ? "Favorit entfernen" : "Als Favorit", () => api("PATCH", `/api/sounds/${s.id}`, { favorite: !s.favorite }).catch(() => {})),
     item("user-plus", "Als Join-Sound ...", () => joinSoundDialog(s)),
-    item("edit", "Umbenennen", () => renameDialog(s)),
-    item("folder", "Kategorie ändern", () => categoryDialog(s)),
-    el("div", { class: "menu-sep" }),
-    item("trash", "In den Papierkorb", () => deleteDialog(s), "danger")
+    item("edit", "Umbenennen", () => renameDialog(s), "admin-only"),
+    item("folder", "Kategorie ändern", () => categoryDialog(s), "admin-only"),
+    el("div", { class: "menu-sep admin-only" }),
+    item("trash", "In den Papierkorb", () => deleteDialog(s), "danger admin-only")
   );
   menu.hidden = false;
   const r = menu.getBoundingClientRect();
@@ -770,8 +770,9 @@ $("#file-input").addEventListener("change", (e) => {
 
 let dragDepth = 0;
 const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+const limited = () => document.body.classList.contains("limited");
 addEventListener("dragenter", (e) => {
-  if (!hasFiles(e)) return;
+  if (!hasFiles(e) || limited()) return;
   e.preventDefault();
   dragDepth++;
   $("#drop-overlay").hidden = false;
@@ -789,6 +790,7 @@ addEventListener("drop", (e) => {
   e.preventDefault();
   dragDepth = 0;
   $("#drop-overlay").hidden = true;
+  if (limited()) return toast("Sounds hochladen dürfen nur Admins", "err");
   uploadFiles(e.dataTransfer.files);
 });
 
@@ -1115,6 +1117,7 @@ function renderExtras() {
     startPullLoop();
   }
   // Settings lists
+  const mine = (name) => !auth.user || String(name).toLocaleLowerCase("de") === auth.user.toLocaleLowerCase("de");
   const joins = $("#join-list");
   joins.replaceChildren(
     ...(x.joinsounds.length
@@ -1127,7 +1130,7 @@ function renderExtras() {
             el("span", { class: `v${j.missing ? " missing" : ""}`, text: j.missing ? `${j.sound} (fehlt)` : j.sound, title: j.sound }),
             el(
               "button",
-              { class: "btn btn-icon btn-sm", type: "button", title: "Entfernen", "aria-label": `Join-Sound von ${j.user} entfernen`, onclick: () => api("DELETE", `/api/joinsounds/${encodeURIComponent(j.user)}`).catch(() => {}) },
+              { class: `btn btn-icon btn-sm${mine(j.user) ? "" : " admin-only"}`, type: "button", title: "Entfernen", "aria-label": `Join-Sound von ${j.user} entfernen`, onclick: () => api("DELETE", `/api/joinsounds/${encodeURIComponent(j.user)}`).catch(() => {}) },
               icon("close")
             )
           )
@@ -1146,7 +1149,7 @@ function renderExtras() {
             el("span", { class: "v", title: `${r.url} (von ${r.created_by})` }, r.title, el("span", { class: "by", text: `  ${r.created_by}` })),
             el(
               "button",
-              { class: "btn btn-icon btn-sm", type: "button", title: "Löschen", "aria-label": `Sender ${r.name} löschen`, onclick: () => api("DELETE", `/api/radio/${encodeURIComponent(r.name)}`).catch(() => {}) },
+              { class: "btn btn-icon btn-sm admin-only", type: "button", title: "Löschen", "aria-label": `Sender ${r.name} löschen`, onclick: () => api("DELETE", `/api/radio/${encodeURIComponent(r.name)}`).catch(() => {}) },
               icon("close")
             )
           )
@@ -1167,7 +1170,7 @@ function renderExtras() {
             el("span", { class: "v", title: `${a.target} (von ${a.created_by})` }, a.target, el("span", { class: "by", text: `  ${a.created_by}` })),
             el(
               "button",
-              { class: "btn btn-icon btn-sm", type: "button", title: "Löschen", "aria-label": `Kürzel ${a.name} löschen`, onclick: () => api("DELETE", `/api/aliases/${encodeURIComponent(a.name)}`).catch(() => {}) },
+              { class: `btn btn-icon btn-sm${mine(a.created_by) ? "" : " admin-only"}`, type: "button", title: "Löschen", "aria-label": `Kürzel ${a.name} löschen`, onclick: () => api("DELETE", `/api/aliases/${encodeURIComponent(a.name)}`).catch(() => {}) },
               icon("close")
             )
           )
@@ -1495,7 +1498,7 @@ function buildLine(item) {
   const boardBtn = el(
     "button",
     {
-      class: "tile-btn",
+      class: "tile-btn admin-only",
       type: "button",
       title: "Aufs Soundboard legen",
       "aria-label": `${label} aufs Soundboard legen`,
@@ -1759,6 +1762,8 @@ async function loadAccount() {
     location.href = "login.html";
     return;
   }
+  // Without admin rights the controls for managing sounds and settings disappear (the server refuses anyway).
+  if (document.body.classList.toggle("limited", auth.admin === false)) renderExtras();
   $("#account-section").hidden = false;
   $("#account-info").replaceChildren(
     "Angemeldet als ",
